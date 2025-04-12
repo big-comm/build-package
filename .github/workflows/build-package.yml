@@ -1,0 +1,184 @@
+name: 📦 Build Package
+
+on:
+  repository_dispatch:
+    types:
+      - "*"
+      - "!aur-*"
+  workflow_dispatch:
+    inputs:
+      branch_type:
+        description: "Branch type (testing, extra or stable)"
+        required: true
+        type: choice
+        options:
+          - testing
+          - extra
+          - stable
+      new_branch:
+        description: "New branch name"
+        required: true
+        type: string
+      debug_enabled:
+        type: boolean
+        description: "With TMATE"
+        required: false
+        default: true
+      publish_github:
+        description: "Publish package on GitHub"
+        type: boolean
+        required: false
+        default: true
+      push_to_repo:
+        description: "Push package to repository"
+        type: boolean
+        required: false
+        default: true
+      update_db:
+        description: "Update repository database"
+        type: boolean
+        required: false
+        default: true
+      extra_command:
+        description: "Extra command to run before building"
+        required: false
+        type: string
+
+env:
+  BRANCH_TYPE: "${{ github.event.client_payload.branch_type || github.event.inputs.branch_type }}"
+  NEW_BRANCH: "${{ github.event.client_payload.branch || github.event.inputs.new_branch }}"
+  PACKAGE_NAME: "${{ github.event.action }}"
+  TELEGRAM_TOKEN: "${{ secrets.TOKEN_BOT }}"
+  CHAT_ID: "${{ secrets.CHAT_ID }}"
+  BRANCH_ORIGEM: "${{ github.ref_name }}"
+  REPO_ORIGEM: "${{ github.event.client_payload.url }}"
+  REPO_NAME: "${{ github.repository }}"
+  BRANCH_FULLNAME: "${{ github.event.client_payload.branch }}"
+  REPOSITORY_TOKEN: "${{ secrets.REPOSITORY_TOKEN }}"
+  ORGANIZATION_TOKEN: "${{ secrets.ORGANIZATION_TOKEN }}"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      actions: write
+      deployments: write
+      issues: write
+      pull-requests: write
+    container:
+      image: talesam/community-build:1.6.5
+      options: --privileged
+    steps:
+      - name: Capture workflow start time
+        id: start-time
+        run: |
+          START_TIME=$(date +"%Y-%m-%d %H:%M:%S")
+          START_TIMESTAMP=$(date +%s)
+          echo "Workflow started at: $START_TIME"
+          echo "START_TIME=$START_TIME" >> $GITHUB_ENV
+          echo "START_TIMESTAMP=$START_TIMESTAMP" >> $GITHUB_ENV
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup SSH Agent
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        run: |
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add - <<< "${{ secrets.PKGBUILD_KEY }}"
+          echo "SSH_AUTH_SOCK=/tmp/ssh_agent.sock" >> $GITHUB_ENV
+
+      - name: Add safe directory
+        run: git config --global --add safe.directory /__w/build-package/build-package
+
+      - name: Set ENVs
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.client_payload.url }}" ]; then
+            echo "url=${{ github.event.client_payload.url }}" >> $GITHUB_ENV
+          fi
+          if [ -n "${{ github.event.client_payload.branch }}" ]; then
+            echo "git_branch=${{ github.event.client_payload.branch }}" >> $GITHUB_ENV
+          fi
+
+          if [ -z "${{ github.event.client_payload.manjaro_branch }}" ]; then
+            echo "manjaro_branch=stable" >> $GITHUB_ENV
+          else
+            echo "manjaro_branch=${{ github.event.client_payload.manjaro_branch }}" >> $GITHUB_ENV
+          fi
+
+          if [ -z "${{ github.event.client_payload.community_branch }}" ]; then
+            echo "community_branch=testing" >> $GITHUB_ENV
+          else
+            echo "community_branch=${{ github.event.client_payload.community_branch }}" >> $GITHUB_ENV
+          fi
+
+      - name: Fetch all branches
+        run: |
+          git fetch --all
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*'
+
+      - name: Checkout to specified branch or create if not exists
+        run: |
+          if git ls-remote --exit-code --heads origin ${{ env.NEW_BRANCH }}; then
+            git checkout ${{ env.NEW_BRANCH }}
+          else
+            git checkout -b ${{ env.NEW_BRANCH }}
+          fi
+
+      - name: Debug Environment Variables
+        shell: bash
+        run: |
+          echo "url: $url"
+          echo "git_branch: $git_branch"
+          echo "manjaro_branch: $manjaro_branch"
+          echo "community_branch: $community_branch"
+          echo "BRANCH_TYPE: ${{ env.BRANCH_TYPE }}"
+          echo "NEW_BRANCH: ${{ env.NEW_BRANCH }}"
+          echo "PACKAGE_NAME: ${{ env.PACKAGE_NAME }}"
+
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
+        with:
+          install-dependencies: false
+
+      - name: Build and Publish Package
+        uses: ./
+        with:
+          build_env: ${{ env.BRANCH_TYPE }}
+          branch_type: ${{ env.BRANCH_TYPE }}
+          new_branch: ${{ env.NEW_BRANCH }}
+          package_name: ${{ env.PACKAGE_NAME }}
+          url: ${{ env.url }}
+          git_branch: ${{ env.git_branch }}
+          manjaro_branch: ${{ env.manjaro_branch }}
+          repo: ${{ github.repository }}
+
+          tmate: ${{ github.event.inputs.tmate || false }}
+
+          github_token: ${{ secrets.REPOSITORY_TOKEN || secrets.GITHUB_TOKEN }}
+          gpg_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg_passphrase: ${{ secrets.PASSPHRASE }}
+          telegram_token: ${{ secrets.TOKEN_BOT }}
+          telegram_chat_id: ${{ secrets.CHAT_ID }}
+
+          repo_host: ${{ secrets.PKGBUILD_HOST }}
+          repo_user: ${{ secrets.PKGBUILD_USER }}
+          repo_port: ${{ secrets.PKGBUILD_PORT }}
+          repo_dir: ${{ secrets.PKGBUILD_DIR }}
+
+          publish_github: ${{ github.event.inputs.publish_github || 'true' }}
+          push_to_repo: ${{ github.event.inputs.push_to_repo || 'true' }}
+          update_db: ${{ github.event.inputs.update_db || 'true' }}
+
+          extra_command: ${{ github.event.inputs.extra_command }}
+
+          start_time: "${{ env.START_TIME }}"
+          start_timestamp: "${{ env.START_TIMESTAMP }}"
+          repo_origem: "${{ github.event.client_payload.url }}"
+          branch_fullname: "${{ github.event.client_payload.branch }}"
