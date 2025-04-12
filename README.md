@@ -13,14 +13,13 @@ This repository contains GitHub Actions workflows and a custom action for buildi
 5. [Input Parameters](#input-parameters)
 6. [Environment Variables](#environment-variables)
 7. [Secrets](#secrets)
-8. [Workflow Steps](#workflow-steps)
+8. [Build Process Steps](#build-process-steps)
 9. [Customization](#customization)
 10. [Contributing](#contributing)
-11. [License](#license)
 
 ## Overview
 
-This project automates the process of building, signing, and publishing packages for the Community repository. It supports both AUR packages and custom community packages, with different workflows for each type.
+This project automates the process of building, signing, and publishing packages for the Community repository. It supports both AUR packages and custom community packages, with different workflows for each type. The action provides visual feedback with a custom blue-based color scheme and integrates with Telegram for status notifications.
 
 ## Workflows
 
@@ -32,10 +31,11 @@ This workflow is triggered by repository dispatch events with types starting wit
 
 Key features:
 - Supports manual and automated triggering
-- Uses a custom Docker container for the build environment
+- Uses a custom Docker container (talesam/community-build:1.6.5) for the build environment
 - Handles AUR package building, signing, and publishing
 - Supports debug sessions with tmate
 - Integrates with Telegram for notifications
+- Captures and reports build duration
 
 ### Build Package
 
@@ -50,6 +50,7 @@ Key features:
 - Handles package building, signing, and publishing
 - Supports debug sessions with tmate
 - Integrates with Telegram for notifications
+- Captures start and end times to calculate build duration
 
 ## Custom Action
 
@@ -58,6 +59,7 @@ Key features:
 This is the core action used by both workflows. It defines the steps for building, signing, and publishing packages.
 
 Key features:
+- Elegant color-coded terminal output
 - Configurable build environment
 - Support for custom package repositories
 - GPG signing of packages
@@ -65,6 +67,7 @@ Key features:
 - Pushing to custom package repositories
 - Updating repository databases
 - Cleaning old packages
+- Visual progress tracking with step numbering (steps 1/4 through 4/4)
 
 ## Usage
 
@@ -104,11 +107,15 @@ The custom action supports the following input parameters:
 - `github_token`: GitHub token for authentication
 - `telegram_token`: Telegram bot token for notifications
 - `telegram_chat_id`: Telegram chat ID for notifications
-- `branch_type`: Branch type (testing or stable)
+- `branch_type`: Branch type (testing, extra or stable)
 - `url`: Repository URL
 - `new_branch`: Name of the new branch
 - `package_name`: Package name
 - `aur_package_dir`: Directory containing the AUR package
+- `start_time`: Workflow start time
+- `start_timestamp`: Workflow start timestamp as epoch seconds
+- `repo_origem`: Source repository
+- `branch_fullname`: Full name of the source branch
 
 ## Environment Variables
 
@@ -119,6 +126,12 @@ The workflows use the following environment variables:
 - `BRANCH_TYPE`: Type of branch (aur, testing, extra, stable)
 - `BUILD_ENV`: Build environment
 - `NEW_BRANCH`: Name of the new branch to create or use
+- `TELEGRAM_TOKEN`: Telegram bot token for notifications
+- `CHAT_ID`: Telegram chat ID for notifications
+- `BRANCH_ORIGEM`: Origin branch name
+- `REPO_ORIGEM`: Origin repository URL
+- `REPO_NAME`: Repository name
+- `BRANCH_FULLNAME`: Full name of the branch of origin
 
 ## Secrets
 
@@ -134,32 +147,36 @@ The following secrets are required:
 - `PKGBUILD_USER`: Username for the package build server
 - `PKGBUILD_PORT`: SSH port for the package build server
 - `PKGBUILD_DIR`: Directory on the build server for storing packages
+- `REPOSITORY_TOKEN`: Token for repository operations (optional)
+- `ORGANIZATION_TOKEN`: Token for organization operations (optional)
 
-## Workflow Steps
+## Build Process Steps
 
-Both workflows follow a similar pattern:
+The build process is divided into 4 main steps:
 
-1. Checkout the repository
-2. Set up SSH agent
-3. Set environment variables
-4. Fetch all branches (for custom packages)
-5. Checkout or create the specified branch (for custom packages)
-6. Set up debug session with tmate (if enabled)
-7. Run the custom action to build and publish the package
-8. Clean up
+### Step 1: Package Initialization
+- Set up the build environment
+- Clone source repository
+- Configure system and repositories
+- Import GPG key
 
-The custom action performs the following steps:
+### Step 2: Package Building and Upload
+- Build the package using makepkg
+- Sign the package with GPG
+- Generate checksums
+- Push the package to the repository
 
-1. Setup build environment
-2. Configure system and repositories
-3. Download source code
-4. Build package
-5. Sign package
-6. Generate checksums
-7. Publish package on GitHub (if enabled)
-8. Push to repository (if enabled)
-9. Update repository database (if enabled)
-10. Clean old packages (if enabled)
+### Step 3: Repository Management
+- Clean old package versions
+- Update repository database
+- Prepare package for release (7z compression if needed)
+
+### Step 4: Finalization
+- Create GitHub release (if enabled)
+- Calculate and report build duration
+- Send completion notification
+
+The process includes elegant terminal output with color-coded messages and detailed progress tracking through Telegram notifications.
 
 ## Customization
 
@@ -169,11 +186,8 @@ You can customize the build process by:
 - Adjusting the input parameters in the workflow files
 - Changing the Docker image used for the build environment
 - Adding custom commands in the `extra_command` input
+- Customizing the color palette for terminal output
 
 ## Contributing
 
 Contributions to improve the workflows or the custom action are welcome. Please submit pull requests or open issues to discuss potential changes or improvements.
-
-## License
-
-[Insert your license information here]
