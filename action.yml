@@ -824,14 +824,33 @@ runs:
           # Remove and recreate database
           echo "Updating database..."
           rm -f "${db_name}.db.tar.gz" "${db_name}.files.tar.gz"
-          
+
+          # Create temporary directory for groups
+          work_dir="/tmp/package-groups"
+          rm -rf "\${work_dir}" # Cleans up any previous leftovers
+          mkdir -p "\${work_dir}"
+
+          # Clone the groups repository
+          echo "Cloning package groups repository..."
+          git clone https://github.com/big-comm/meta-packages.git "\${work_dir}"
+
           # Check if packages exist before recreating the database
           if ls *.pkg.tar.zst >/dev/null 2>&1; then
-            echo "Recreating database with existing packages..."
-            repo-add "${db_name}.db.tar.gz" *.pkg.tar.zst
+            echo "Recreating database with existing packages and groups..."
+            # Uses files directly from the cloned repository with the new structure
+            if [ -d "\${work_dir}/groups/${branch,,}" ]; then
+              echo "Found group files in \${work_dir}/groups/${branch,,}/"
+              repo-add --group "\${work_dir}/groups/${branch,,}/*.group" "${db_name}.db.tar.gz" *.pkg.tar.zst
+            else
+              echo "No group files found in \${work_dir}/groups/${branch,,}/, creating database without groups"
+              repo-add "${db_name}.db.tar.gz" *.pkg.tar.zst
+            fi
           else
             echo "No packages found to add to the database"
           fi
+
+          # Cleanup
+          rm -rf "\${work_dir}"
 
           # Clean orphaned files
           echo "Looking for orphaned files..."
