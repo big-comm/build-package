@@ -280,6 +280,7 @@ runs:
         <b>Started/Triggered by:</b> <code>${started_by_user}/${triggered_by_user}</code>
         <b>Branch:</b> <code>${branch_escaped}</code>"
         msg_info "$message"
+        send_telegram_message "$message"
         replicate '='
 
     - name: Debug Inputs
@@ -782,9 +783,9 @@ runs:
         msg_raw "Database name: $db_name"
         branch_escaped=$(echo "$branch" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
 
-        message="🧹<b>[step 4/6] STARTING CLEANUP OF OLD PACKAGES</b>
+        message="🧹<b>[step 3/4] build-package - STARTING CLEANUP OF OLD PACKAGES</b>
         <b>branch:</b> <code>${branch_escaped}</code>"
-        # Message sending is commented to avoid too many notifications
+        send_telegram_message "$message"
 
         ssh "${{ inputs.repo_user }}@${{ inputs.repo_host }}" -p "${{ inputs.repo_port }}" << EOF
           # Determine correct directory based on branch_type
@@ -834,6 +835,10 @@ runs:
           echo "Cloning package groups repository..."
           git clone --branch main --depth 1 https://github.com/big-comm/meta-packages.git "${work_dir}"
 
+          # Debug: List cloned files
+          echo "Cloned group files:"
+          ls -l "${work_dir}/groups/"
+
           # Check if packages exist before recreating the database
           if ls *.pkg.tar.zst >/dev/null 2>&1; then
             echo "Recreating database with existing packages and groups..."
@@ -861,7 +866,7 @@ runs:
               rm -rf /tmp/repo-db
               
             else
-              echo "No group files found in ${work_dir}/groups/${branch,,}/, database created without groups"
+              echo "No group files found in ${work_dir}/groups/, database created without groups"
             fi
             
           else
@@ -895,7 +900,7 @@ runs:
           ✅ <b>Cleanup completed successfully</b>
           <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
           <b>Workflow:</b> <code>build-package/action.yml</code>"
-          # Message sending is commented to avoid too many notifications
+          send_telegram_message "$message"
         else
           msg_warning "Cleanup completed with exit code: $retval"
           message="🧹 <b>[step 3.1/4] build-package - CLEANUP COMPLETED</b>
