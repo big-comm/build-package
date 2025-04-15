@@ -816,7 +816,7 @@ runs:
               fi
             done
           }
-          
+
           # Process old packages
           echo "Processing old packages..."
           process_old_packages
@@ -832,7 +832,7 @@ runs:
 
           # Clone the groups repository
           echo "Cloning package groups repository..."
-          git clone https://github.com/big-comm/meta-packages.git "${work_dir}"
+          git clone --branch main --depth 1 https://github.com/big-comm/meta-packages.git "${work_dir}"
 
           # Check if packages exist before recreating the database
           if ls *.pkg.tar.zst >/dev/null 2>&1; then
@@ -842,15 +842,15 @@ runs:
             repo-add "${db_name}.db.tar.gz" *.pkg.tar.zst
 
             # Now add groups manually
-            if [ -d "${work_dir}/groups/${branch,,}" ]; then
-              echo "Found group files in ${work_dir}/groups/${branch,,}/"
+            if [ -d "${work_dir}/groups/" ]; then
+              echo "Found group files in ${work_dir}/groups/"
               
               # Extract database to temporary directory
               mkdir -p /tmp/repo-db
               tar -xzf "${db_name}.db.tar.gz" -C /tmp/repo-db
               
               # Process each group file
-              for group_file in "${work_dir}/groups/${branch,,}"/*.group; do
+              for group_file in "${work_dir}/groups/"*.group; do
                 group_name=$(sed -n '1s/@//p' "${group_file}")
                 packages=$(sed '1d' "${group_file}" | tr '\n' ' ')
                 echo "${group_name} ${packages}" >> /tmp/repo-db/groups
