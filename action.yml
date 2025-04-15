@@ -816,7 +816,7 @@ runs:
               fi
             done
           }
-
+          
           # Process old packages
           echo "Processing old packages..."
           process_old_packages
@@ -827,24 +827,43 @@ runs:
 
           # Create temporary directory for groups
           work_dir="/tmp/package-groups"
-          rm -rf "\${work_dir}" # Cleans up any previous leftovers
-          mkdir -p "\${work_dir}"
+          rm -rf "${work_dir}" # Cleans up any previous leftovers
+          mkdir -p "${work_dir}"
 
           # Clone the groups repository
           echo "Cloning package groups repository..."
-          git clone https://github.com/big-comm/meta-packages.git "\${work_dir}"
+          git clone https://github.com/big-comm/meta-packages.git "${work_dir}"
 
           # Check if packages exist before recreating the database
           if ls *.pkg.tar.zst >/dev/null 2>&1; then
             echo "Recreating database with existing packages and groups..."
-            # Uses files directly from the cloned repository with the new structure
-            if [ -d "\${work_dir}/groups/${branch,,}" ]; then
-              echo "Found group files in \${work_dir}/groups/${branch,,}/"
-              repo-add --group "\${work_dir}/groups/${branch,,}/*.group" "${db_name}.db.tar.gz" *.pkg.tar.zst
+            
+            # First create database with packages
+            repo-add "${db_name}.db.tar.gz" *.pkg.tar.zst
+
+            # Now add groups manually
+            if [ -d "${work_dir}/groups/${branch,,}" ]; then
+              echo "Found group files in ${work_dir}/groups/${branch,,}/"
+              
+              # Extract database to temporary directory
+              mkdir -p /tmp/repo-db
+              tar -xzf "${db_name}.db.tar.gz" -C /tmp/repo-db
+              
+              # Process each group file
+              for group_file in "${work_dir}/groups/${branch,,}"/*.group; do
+                group_name=$(sed -n '1s/@//p' "${group_file}")
+                packages=$(sed '1d' "${group_file}" | tr '\n' ' ')
+                echo "${group_name} ${packages}" >> /tmp/repo-db/groups
+              done
+              
+              # Rebuild database with groups
+              tar -czf "${db_name}.db.tar.gz" -C /tmp/repo-db .
+              rm -rf /tmp/repo-db
+              
             else
-              echo "No group files found in \${work_dir}/groups/${branch,,}/, creating database without groups"
-              repo-add "${db_name}.db.tar.gz" *.pkg.tar.zst
+              echo "No group files found in ${work_dir}/groups/${branch,,}/, database created without groups"
             fi
+            
           else
             echo "No packages found to add to the database"
           fi
