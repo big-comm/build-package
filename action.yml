@@ -114,6 +114,10 @@ inputs:
   branch_fullname:
     description: "Full name of the source branch"
     required: false
+  translate:
+    description: "Enable translation process"
+    required: false
+    default: "false"
 
 # Action steps definition
 runs:
@@ -433,6 +437,16 @@ runs:
         elif [[ -n "${{ inputs.url }}" ]]; then
           msg_raw "Cloning repository from: ${{ inputs.url }}"
           msg_run "git clone ${{ inputs.url }}.git source_repo"
+          
+          # Check for locale directory
+          if [[ -d "source_repo/locale" ]]; then
+            msg_info "Locale directory found - translation enabled"
+            echo "LOCALE_DIR_EXISTS=true" >> $GITHUB_ENV
+          else
+            msg_info "No locale directory found - translation will be skipped"
+            echo "LOCALE_DIR_EXISTS=false" >> $GITHUB_ENV
+          fi
+          
           msg_run 'cd source_repo'
 
           # Extract information from cloned repository
@@ -450,7 +464,85 @@ runs:
           fi
         else
           msg_warning "No URL provided, assuming already in the correct repository"
+          echo "LOCALE_DIR_EXISTS=false" >> $GITHUB_ENV
         fi
+        replicate '#'
+
+    - name: Install Translation Dependencies
+      if: ${{ inputs.translate == 'true' && env.LOCALE_DIR_EXISTS == 'true' }}
+      shell: bash
+      run: |
+        # Install Translation Dependencies
+        source /tmp/send_telegram_message.sh
+        replicate '#'
+        msg_info "Installing translation dependencies"
+        # Install attranslator
+        msg_run "sudo npm install --location=global attranslate"
+        replicate '#'
+
+    - name: Process Translations
+      if: ${{ inputs.translate == 'true' && env.LOCALE_DIR_EXISTS == 'true' }}
+      shell: bash
+      env:
+        OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+      run: |
+        # Process translations
+        source /tmp/send_telegram_message.sh
+        replicate '#'
+        msg_info "Starting translation process"
+        
+        # Save current directory
+        CURRENT_DIR=$(pwd)
+        
+        # Clone translation tools repository
+        cd ..
+        git clone https://github.com/biglinux/big-auto-translator.git
+        mv big-auto-translator/gettext_po_generator_github.sh .
+        
+        # Get repository name
+        gitfolder=$(echo ${{ github.repository }} | rev | cut -d "/" -f1 | rev)
+        
+        # Run translation script
+        msg_info "Running translation script for repository"
+        bash gettext_po_generator_github.sh source_repo
+        
+        # Move back to the working directory
+        cd $CURRENT_DIR
+        
+        msg_ok "Translation process completed"
+        replicate '#'
+
+    - name: Commit Translation Changes
+      if: ${{ inputs.translate == 'true' && env.LOCALE_DIR_EXISTS == 'true' }}
+      shell: bash
+      run: |
+        # Commit translation changes
+        source /tmp/send_telegram_message.sh
+        replicate '#'
+        
+        msg_info "Committing translation changes"
+        cd source_repo
+        
+        # Configure Git
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        
+        # Add all changes
+        git add --all
+        
+        # Check if there are changes to commit
+        if git commit -m "translate $(date +%y-%m-%d_%H:%M)" -a; then
+          msg_ok "Translation changes committed"
+          
+          # Push changes if there are any
+          git push
+          msg_ok "Translation changes pushed to repository"
+        else
+          msg_info "No translation changes to commit"
+        fi
+        
+        # Go back to original directory
+        cd ..
         replicate '#'
 
     - name: Build package
@@ -1054,4 +1146,4 @@ runs:
         <b>Duration:</b> <code>${hours}h ${minutes}m ${seconds}s</code>"
         send_telegram_message "$message"
         msg_ok "$message"
-        replicate '#'
+        replicate '#'"
