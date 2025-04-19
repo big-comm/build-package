@@ -898,25 +898,28 @@ runs:
                 fi
               done
               
-              # Add groups to the database using direct method
+              # Add groups to the database using Method 1A (tar -r direct) - proven to work
               if [ -s "\${groups_file}" ]; then
-                echo "Adding groups to database using direct method"
+                echo "Adding groups to database using Method 1A (tar -r direct method)"
                 
-                # Create temporary directory with the correct format for pacman
-                mkdir -p "/tmp/repo-db-\$\$"
+                # Create temporary 'groups' file with content from processed group files
+                cat "\${groups_file}" > groups
+                echo "Content of the 'groups' file to be added:"
+                cat groups
                 
-                # Extract only the 'groups' file if it exists
-                tar -xzf "${db_name}.db.tar.gz" -C "/tmp/repo-db-\$\$" "./groups" 2>/dev/null || true
+                # Decompress the tar.gz file
+                gunzip "${db_name}.db.tar.gz"
                 
-                # Add/replace the contents of the groups file
-                cat "\${groups_file}" > "/tmp/repo-db-\$\$/groups"
+                # Add directly using tar -r (proven method)
+                tar -rf "${db_name}.db.tar" groups
                 
-                # Add the groups file back to the database without changing other files
-                tar -rzf "${db_name}.db.tar.gz" -C "/tmp/repo-db-\$\$" "./groups" 2>/dev/null || true
+                # Recompress
+                gzip "${db_name}.db.tar"
                 
-                # Clean up temporary directory
-                rm -rf "/tmp/repo-db-\$\$"
-                echo "Groups successfully added to database"
+                # Clean up temporary files
+                rm -f groups
+                
+                echo "Groups successfully added to database using Method 1A"
               else
                 echo "No valid groups to add"
               fi
