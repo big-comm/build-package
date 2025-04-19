@@ -826,113 +826,32 @@ runs:
           echo "Updating database..."
           rm -f "${db_name}.db.tar.gz" "${db_name}.files.tar.gz"
 
-          # Define caminho absoluto para o diretório temporário
-          work_dir="/tmp/package-groups-\$\$"
-          echo "Using work directory: \${work_dir}"
-          
-          # Limpa qualquer diretório antigo e cria novo
-          rm -rf "\${work_dir}"
-          mkdir -p "\${work_dir}"
-          
-          if [ ! -d "\${work_dir}" ]; then
-            echo "Error: Failed to create work directory \${work_dir}"
-            exit 1
-          fi
-
-          # Clone the groups repository
-          echo "Cloning package groups repository to \${work_dir}..."
-          if git clone --branch main --depth 1 https://github.com/big-comm/meta-packages.git "\${work_dir}"; then
-            echo "Repository cloned successfully"
-          else
-            echo "Warning: Failed to clone repository, will continue without groups"
-            # Continua sem os grupos, não termina o processo
-          fi
-
-          # Debug: List cloned files
-          echo "Listing work directory contents:"
-          ls -la "\${work_dir}"
-          
-          # Verifica se o diretório groups existe
-          if [ -d "\${work_dir}/groups" ]; then
-            echo "Found groups directory:"
-            ls -la "\${work_dir}/groups"
-          else
-            echo "Warning: Groups directory not found at \${work_dir}/groups"
-            # Talvez o repositório tenha uma estrutura diferente
-            echo "Checking entire repository structure:"
-            find "\${work_dir}" -type f -name "*.group" | sort
-          fi
-          
           # Check if packages exist before recreating the database
           if ls *.pkg.tar.zst >/dev/null 2>&1; then
-            echo "Recreating database with existing packages and groups..."
+            echo "Recreating database with existing packages..."
             
-            # First create database with packages - only use repo-add to create the database
+            # Create database with packages
             repo-add "${db_name}.db.tar.gz" *.pkg.tar.zst
-            
-            # For groups, we use a different approach that doesn't corrupt the database
-            group_dir="\${work_dir}/groups"
-            if [ -d "\${group_dir}" ] && [ -n "\$(ls -A "\${group_dir}")" ]; then
-              echo "Found group files in \${group_dir}:"
-              ls -la "\${group_dir}"
-              
-              # Create a temporary file with all groups
-              groups_file="/tmp/all-groups-\$\$"
-              # Clear file if it exists
-              > "\${groups_file}"
-              
-              # Process each group file
-              for group_file in "\${group_dir}"/*.group; do
-                if [ -f "\${group_file}" ]; then
-                  group_name=\$(sed -n '1s/@//p' "\${group_file}")
-                  packages=\$(sed '1d' "\${group_file}" | tr '\n' ' ')
-                  
-                  # Verify group_name was extracted
-                  if [ -n "\${group_name}" ]; then
-                    echo "Adding group: \${group_name} with packages: \${packages}"
-                    echo "\${group_name} \${packages}" >> "\${groups_file}"
-                  else
-                    echo "Warning: Could not extract group name from \${group_file}"
-                    cat "\${group_file}"
-                  fi
-                fi
-              done
-              
-              # Add groups to the database using Method 1A (tar -r direct) - proven to work
-              if [ -s "\${groups_file}" ]; then
-                echo "Adding groups to database using Method 1A (tar -r direct method)"
-                
-                # Create temporary 'groups' file with content from processed group files
-                cat "\${groups_file}" > groups
-                echo "Content of the 'groups' file to be added:"
-                cat groups
-                
-                # Decompress the tar.gz file
-                gunzip "${db_name}.db.tar.gz"
-                
-                # Add directly using tar -r (proven method)
-                tar -rf "${db_name}.db.tar" groups
-                
-                # Recompress
-                gzip "${db_name}.db.tar"
-                
-                # Clean up temporary files
-                rm -f groups
-                
-                echo "Groups successfully added to database using Method 1A"
-              else
-                echo "No valid groups to add"
-              fi
-              
-              # Clean temporary file
-              rm -f "\${groups_file}"
-            else
-              echo "No group files found in \${group_dir}, database created without groups"
-            fi
-            
+            echo "Database recreated successfully"
           else
             echo "No packages found to add to the database"
           fi
+
+          # Clean orphaned files
+          echo "Looking for orphaned files..."
+          find . -maxdepth 1 -type f \( -name "*.sig" -o -name "*.md5" \) | while read -r file; do
+            base_name="\${file%.*}"
+            if [ ! -f "\${base_name}" ]; then
+              echo "Removing orphaned file: \${file}"
+              rm -f "\${file}"
+            fi
+          done
+
+          # Show final result
+          echo "Final directory contents:"
+          ls -la
+          
+          exit 0
         EOF
         retval="$?"
 
@@ -1135,4 +1054,4 @@ runs:
         <b>Duration:</b> <code>${hours}h ${minutes}m ${seconds}s</code>"
         send_telegram_message "$message"
         msg_ok "$message"
-        replicate '#'"
+        replicate '#'
