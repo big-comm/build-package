@@ -166,6 +166,10 @@ jobs:
           gpg_passphrase: ${{ secrets.PASSPHRASE }}
           telegram_token: ${{ secrets.TOKEN_BOT }}
           telegram_chat_id: ${{ secrets.CHAT_ID }}
+          
+          # Add configuration for translation
+          translate: 'true'
+          openai_key: ${{ secrets.OPENAI_KEY }}
 
           repo_host: ${{ secrets.PKGBUILD_HOST }}
           repo_user: ${{ secrets.PKGBUILD_USER }}

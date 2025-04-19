@@ -118,6 +118,9 @@ inputs:
     description: "Enable translation process"
     required: false
     default: "false"
+  openai_key:
+    description: "OpenAI API key for translation"
+    required: false
 
 # Action steps definition
 runs:
@@ -484,7 +487,7 @@ runs:
       if: ${{ inputs.translate == 'true' && env.LOCALE_DIR_EXISTS == 'true' }}
       shell: bash
       env:
-        OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+        OPENAI_KEY: ${{ inputs.openai_key }}
       run: |
         # Process translations
         source /tmp/send_telegram_message.sh
