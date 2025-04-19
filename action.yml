@@ -826,39 +826,75 @@ runs:
           echo "Updating database..."
           rm -f "${db_name}.db.tar.gz" "${db_name}.files.tar.gz"
 
-          # Create temporary directory for groups
-          work_dir="/tmp/package-groups"
-          rm -rf "${work_dir}" # Cleans up any previous leftovers
-          mkdir -p "${work_dir}"
+          # Define caminho absoluto para o diretório temporário
+          work_dir="/tmp/package-groups-\$\$"
+          echo "Using work directory: \${work_dir}"
+          
+          # Limpa qualquer diretório antigo e cria novo
+          rm -rf "\${work_dir}"
+          mkdir -p "\${work_dir}"
+          
+          if [ ! -d "\${work_dir}" ]; then
+            echo "Error: Failed to create work directory \${work_dir}"
+            exit 1
+          fi
 
           # Clone the groups repository
-          echo "Cloning package groups repository..."
-          git clone --branch main --depth 1 https://github.com/big-comm/meta-packages.git "${work_dir}"
+          echo "Cloning package groups repository to \${work_dir}..."
+          if git clone --branch main --depth 1 https://github.com/big-comm/meta-packages.git "\${work_dir}"; then
+            echo "Repository cloned successfully"
+          else
+            echo "Warning: Failed to clone repository, will continue without groups"
+            # Continua sem os grupos, não termina o processo
+          fi
 
           # Debug: List cloned files
-          echo "Cloned group files:"
-          ls -l "${work_dir}/groups/"
-
+          echo "Listing work directory contents:"
+          ls -la "\${work_dir}"
+          
+          # Verifica se o diretório groups existe
+          if [ -d "\${work_dir}/groups" ]; then
+            echo "Found groups directory:"
+            ls -la "\${work_dir}/groups"
+          else
+            echo "Warning: Groups directory not found at \${work_dir}/groups"
+            # Talvez o repositório tenha uma estrutura diferente
+            echo "Checking entire repository structure:"
+            find "\${work_dir}" -type f -name "*.group" | sort
+          fi
+          
           # Check if packages exist before recreating the database
           if ls *.pkg.tar.zst >/dev/null 2>&1; then
             echo "Recreating database with existing packages and groups..."
             
             # First create database with packages
             repo-add "${db_name}.db.tar.gz" *.pkg.tar.zst
-
-            # Now add groups manually
-            if [ -d "${work_dir}/groups/" ]; then
-              echo "Found group files in ${work_dir}/groups/"
+            
+            # Now add groups only if they exist
+            group_dir="\${work_dir}/groups"
+            if [ -d "\${group_dir}" ] && [ -n "\$(ls -A "\${group_dir}")" ]; then
+              echo "Found group files in \${group_dir}:"
+              ls -la "\${group_dir}"
               
               # Extract database to temporary directory
               mkdir -p /tmp/repo-db
               tar -xzf "${db_name}.db.tar.gz" -C /tmp/repo-db
               
               # Process each group file
-              for group_file in "${work_dir}/groups/"*.group; do
-                group_name=$(sed -n '1s/@//p' "${group_file}")
-                packages=$(sed '1d' "${group_file}" | tr '\n' ' ')
-                echo "${group_name} ${packages}" >> /tmp/repo-db/groups
+              for group_file in "\${group_dir}"/*.group; do
+                if [ -f "\${group_file}" ]; then
+                  group_name=\$(sed -n '1s/@//p' "\${group_file}")
+                  packages=\$(sed '1d' "\${group_file}" | tr '\n' ' ')
+                  
+                  # Verify group_name was extracted
+                  if [ -n "\${group_name}" ]; then
+                    echo "Adding group: \${group_name} with packages: \${packages}"
+                    echo "\${group_name} \${packages}" >> /tmp/repo-db/groups
+                  else
+                    echo "Warning: Could not extract group name from \${group_file}"
+                    cat "\${group_file}"
+                  fi
+                fi
               done
               
               # Rebuild database with groups
@@ -866,7 +902,7 @@ runs:
               rm -rf /tmp/repo-db
               
             else
-              echo "No group files found in ${work_dir}/groups/, database created without groups"
+              echo "No group files found in \${group_dir}, database created without groups"
             fi
             
           else
@@ -874,23 +910,8 @@ runs:
           fi
 
           # Cleanup
+          echo "Cleaning up temporary directory \${work_dir}"
           rm -rf "\${work_dir}"
-
-          # Clean orphaned files
-          echo "Looking for orphaned files..."
-          find . -maxdepth 1 -type f \( -name "*.sig" -o -name "*.md5" \) | while read -r file; do
-            base_name="\${file%.*}"
-            if [ ! -f "\${base_name}" ]; then
-              echo "Removing orphaned file: \${file}"
-              rm -f "\${file}"
-            fi
-          done
-
-          # Show final result
-          echo "Final directory contents:"
-          ls -la
-          
-          exit 0
         EOF
         retval="$?"
 
