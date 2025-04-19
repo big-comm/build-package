@@ -867,18 +867,19 @@ runs:
           if ls *.pkg.tar.zst >/dev/null 2>&1; then
             echo "Recreating database with existing packages and groups..."
             
-            # First create database with packages
+            # First create database with packages - only use repo-add to create the database
             repo-add "${db_name}.db.tar.gz" *.pkg.tar.zst
             
-            # Now add groups only if they exist
+            # For groups, we use a different approach that doesn't corrupt the database
             group_dir="\${work_dir}/groups"
             if [ -d "\${group_dir}" ] && [ -n "\$(ls -A "\${group_dir}")" ]; then
               echo "Found group files in \${group_dir}:"
               ls -la "\${group_dir}"
               
-              # Extract database to temporary directory
-              mkdir -p /tmp/repo-db
-              tar -xzf "${db_name}.db.tar.gz" -C /tmp/repo-db
+              # Create a temporary file with all groups
+              groups_file="/tmp/all-groups-\$\$"
+              # Clear file if it exists
+              > "\${groups_file}"
               
               # Process each group file
               for group_file in "\${group_dir}"/*.group; do
@@ -889,7 +890,7 @@ runs:
                   # Verify group_name was extracted
                   if [ -n "\${group_name}" ]; then
                     echo "Adding group: \${group_name} with packages: \${packages}"
-                    echo "\${group_name} \${packages}" >> /tmp/repo-db/groups
+                    echo "\${group_name} \${packages}" >> "\${groups_file}"
                   else
                     echo "Warning: Could not extract group name from \${group_file}"
                     cat "\${group_file}"
@@ -897,10 +898,31 @@ runs:
                 fi
               done
               
-              # Rebuild database with groups
-              tar -czf "${db_name}.db.tar.gz" -C /tmp/repo-db .
-              rm -rf /tmp/repo-db
+              # Add groups to the database using direct method
+              if [ -s "\${groups_file}" ]; then
+                echo "Adding groups to database using direct method"
+                
+                # Create temporary directory with the correct format for pacman
+                mkdir -p "/tmp/repo-db-\$\$"
+                
+                # Extract only the 'groups' file if it exists
+                tar -xzf "${db_name}.db.tar.gz" -C "/tmp/repo-db-\$\$" "./groups" 2>/dev/null || true
+                
+                # Add/replace the contents of the groups file
+                cat "\${groups_file}" > "/tmp/repo-db-\$\$/groups"
+                
+                # Add the groups file back to the database without changing other files
+                tar -rzf "${db_name}.db.tar.gz" -C "/tmp/repo-db-\$\$" "./groups" 2>/dev/null || true
+                
+                # Clean up temporary directory
+                rm -rf "/tmp/repo-db-\$\$"
+                echo "Groups successfully added to database"
+              else
+                echo "No valid groups to add"
+              fi
               
+              # Clean temporary file
+              rm -f "\${groups_file}"
             else
               echo "No group files found in \${group_dir}, database created without groups"
             fi
@@ -908,10 +930,6 @@ runs:
           else
             echo "No packages found to add to the database"
           fi
-
-          # Cleanup
-          echo "Cleaning up temporary directory \${work_dir}"
-          rm -rf "\${work_dir}"
         EOF
         retval="$?"
 
@@ -1114,4 +1132,4 @@ runs:
         <b>Duration:</b> <code>${hours}h ${minutes}m ${seconds}s</code>"
         send_telegram_message "$message"
         msg_ok "$message"
-        replicate '#'
+        replicate '#'"
