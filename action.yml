@@ -494,29 +494,27 @@ runs:
         replicate '#'
         msg_info "Starting translation process"
         
-        # Install stonejs-tools with sudo to avoid permission errors
-        msg_info "Installing stonejs-tools with sudo"
-        sudo npm install -g stonejs-tools
+        # Skip installing stonejs-tools - it should be in the Docker image
+        # or was already installed globally
         
         # Get the real package/repository name
         repo_name=$(basename $(pwd))
         msg_info "Repository name detected: $repo_name"
         
-        # Clone translation tools repository
-        cd ..
-        git clone https://github.com/biglinux/big-auto-translator.git
-        mv big-auto-translator/gettext_po_generator_github.sh .
-        
-        # Get repository name exactly as in the original
+        # Get repository name for translation
         gitfolder=$(echo ${{ github.repository }} | rev | cut -d "/" -f1 | rev)
         msg_info "Git folder name: $gitfolder"
         
         # Create locale directory if needed
         mkdir -p "$gitfolder/locale"
         
-        # Use the original translation script command
-        msg_info "Running translation script with original parameters"
-        bash gettext_po_generator_github.sh "$gitfolder"
+        # Make sure we have write access to the locale directory
+        chmod -R 755 "$gitfolder/locale"
+        
+        # Use the local translation script
+        msg_info "Running translation script with local script"
+        cd ..
+        OPENAI_KEY=${{ inputs.openai_key }} bash $GITHUB_WORKSPACE/usr/bin/gettext_po_generator_github.sh "$gitfolder"
         
         # Return to the original directory
         cd $GITHUB_WORKSPACE
