@@ -514,7 +514,7 @@ runs:
         # Use the local translation script
         msg_info "Running translation script with local script"
         cd ..
-        OPENAI_KEY=${{ inputs.openai_key }} bash $GITHUB_WORKSPACE/usr/bin/gettext_po_generator_github.sh "$gitfolder"
+        OPENAI_KEY=${{ inputs.openai_key }} bash $GITHUB_WORKSPACE/usr/bin/gettext_po_generator_github.sh "source_repo"
         
         # Return to the original directory
         cd $GITHUB_WORKSPACE
