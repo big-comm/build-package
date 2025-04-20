@@ -494,7 +494,11 @@ runs:
         replicate '#'
         msg_info "Starting translation process"
         
-        # Obtenha o nome real do pacote/repositório
+        # Install stonejs-tools with sudo to avoid permission errors
+        msg_info "Installing stonejs-tools with sudo"
+        sudo npm install -g stonejs-tools
+        
+        # Get the real package/repository name
         repo_name=$(basename $(pwd))
         msg_info "Repository name detected: $repo_name"
         
@@ -503,18 +507,18 @@ runs:
         git clone https://github.com/biglinux/big-auto-translator.git
         mv big-auto-translator/gettext_po_generator_github.sh .
         
-        # Obtém o nome do repositório exatamente como no original
+        # Get repository name exactly as in the original
         gitfolder=$(echo ${{ github.repository }} | rev | cut -d "/" -f1 | rev)
         msg_info "Git folder name: $gitfolder"
         
-        # Cria o diretório locale se necessário
+        # Create locale directory if needed
         mkdir -p "$gitfolder/locale"
         
-        # Usando o comando original do script de tradução
+        # Use the original translation script command
         msg_info "Running translation script with original parameters"
         bash gettext_po_generator_github.sh "$gitfolder"
         
-        # Voltar para o diretório original
+        # Return to the original directory
         cd $GITHUB_WORKSPACE
         
         msg_ok "Translation process completed"
@@ -1006,8 +1010,8 @@ runs:
         message="🕒 <b>[step 3.2/4] build-package - PREPARE PACKAGE FOR RELEASE (7z)</b>
         <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
         <b>Workflow:</b> <code>build-package/action.yml</code>
-        <b>Pacote:</b> <code>${{ env.PKGNAME_BRANCH }}/${{ env.PKGNAME_BASENAME }}</code>
-        <b>Inicio:</b> <code>${START_TIME}</code>"
+        <b>Package:</b> <code>${{ env.PKGNAME_BRANCH }}/${{ env.PKGNAME_BASENAME }}</code>
+        <b>Start:</b> <code>${START_TIME}</code>"
         send_telegram_message "$message"
         msg_info "$message"
         replicate '-'
@@ -1120,11 +1124,11 @@ runs:
         source /tmp/send_telegram_message.sh
         replicate '#'
         link_action=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        message="🚨 <b>FALHA ao criar pacote:</b>
+        message="🚨 <b>FAILED to create package:</b>
         <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
-        <b>Pacote:</b> <code>${{ github.event.action }}</code>
+        <b>Package:</b> <code>${{ github.event.action }}</code>
         <b>Branch:</b> <code>${{ github.ref_name }}</code>
-        <b>URL erro:</b> <a href='https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}'>${link_action}</a>"
+        <b>Error URL:</b> <a href='https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}'>${link_action}</a>"
         msg_warning "$message"
         send_telegram_message "$message"
         replicate '#'
