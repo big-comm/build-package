@@ -481,40 +481,40 @@ runs:
         source /tmp/send_telegram_message.sh
         replicate '#'
         msg_info "Starting translation process"
-
+        
         # Get repository name to match the original workflow behavior
         REPO_NAME="${{ env.REPO_ORIGEM_NAME }}"
         msg_info "Repository name (package) to translate: $REPO_NAME"
-
+        
         # Go to source repo root
         cd $GITHUB_WORKSPACE/source_repo
         msg_info "Current directory: $(pwd)"
         msg_info "Contents of current directory:"
         ls -la
-
+        
         # Make sure we have locale directory with proper permissions
         mkdir -p locale
         chmod -R 755 locale
         msg_info "Created locale directory with proper permissions"
-
-        # Execute the translation script exactly as the original workflow did -
-        # passing the repository name as parameter
-        msg_info "Executing translation script with repository name as parameter"
-        OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "$REPO_NAME"
-
+        
+        # Execute the translation script with "." as parameter to use current directory
+        # instead of looking for a subdirectory
+        msg_info "Executing translation script with current directory"
+        OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "."
+        
         # Check translation results
         if [ -f "locale/$REPO_NAME.pot" ]; then
           msg_ok "Translation template created successfully"
           msg_info "Contents of locale directory:"
           ls -la locale/
         else
-          msg_warning "Failed to create translation template. Trying fallback method..."
-          OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "."
+          msg_warning "Failed to create translation template. Trying with package name..."
+          OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "$REPO_NAME"
         fi
-
+        
         # Return to the original directory
         cd $GITHUB_WORKSPACE
-
+        
         msg_ok "Translation process completed"
         replicate '#'
 
