@@ -494,23 +494,28 @@ runs:
         replicate '#'
         msg_info "Starting translation process"
         
-        # Save current directory
-        CURRENT_DIR=$(pwd)
+        # Obtenha o nome real do pacote/repositório
+        repo_name=$(basename $(pwd))
+        msg_info "Repository name detected: $repo_name"
         
         # Clone translation tools repository
         cd ..
         git clone https://github.com/biglinux/big-auto-translator.git
         mv big-auto-translator/gettext_po_generator_github.sh .
         
-        # Get repository name
+        # Obtém o nome do repositório exatamente como no original
         gitfolder=$(echo ${{ github.repository }} | rev | cut -d "/" -f1 | rev)
+        msg_info "Git folder name: $gitfolder"
         
-        # Run translation script
-        msg_info "Running translation script for repository"
-        bash gettext_po_generator_github.sh source_repo
+        # Cria o diretório locale se necessário
+        mkdir -p "$gitfolder/locale"
         
-        # Move back to the working directory
-        cd $CURRENT_DIR
+        # Usando o comando original do script de tradução
+        msg_info "Running translation script with original parameters"
+        bash gettext_po_generator_github.sh "$gitfolder"
+        
+        # Voltar para o diretório original
+        cd $GITHUB_WORKSPACE
         
         msg_ok "Translation process completed"
         replicate '#'
