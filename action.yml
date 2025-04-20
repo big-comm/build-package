@@ -493,38 +493,35 @@ runs:
         source /tmp/send_telegram_message.sh
         replicate '#'
         msg_info "Starting translation process"
-        
-        # Skip installing stonejs-tools - it should be in the Docker image
-        # or was already installed globally
-        
+
         # Get the real package/repository name
         repo_name=$(basename $(pwd))
         msg_info "Repository name detected: $repo_name"
-        
+
         # Get repository name for translation
         gitfolder=$(echo ${{ github.repository }} | rev | cut -d "/" -f1 | rev)
         msg_info "Git folder name: $gitfolder"
-        
+
         # Create locale directory if needed
         mkdir -p "$gitfolder/locale"
-        
+
         # Make sure we have write access to the locale directory
         chmod -R 755 "$gitfolder/locale"
-        
-        # Use the local translation script
-        msg_info "Running translation script with local script"
+
+        # Use the translation script from PATH
+        msg_info "Running translation script"
         PKGBUILD_PATH=$(find source_repo -name PKGBUILD | head -n 1)
         if [ -f "$PKGBUILD_PATH" ]; then
           PKGBUILD_DIR=$(dirname "$PKGBUILD_PATH")
           cd "$PKGBUILD_DIR" && PKGNAME=$(grep -m1 "pkgname=" PKGBUILD | cut -d'=' -f2 | tr -d '"') && \
-          cd $GITHUB_WORKSPACE/source_repo && OPENAI_KEY=${{ inputs.openai_key }} bash $GITHUB_WORKSPACE/usr/bin/gettext_po_generator_github.sh "$PKGNAME"
+          cd $GITHUB_WORKSPACE/source_repo && OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "$PKGNAME"
         else
           msg_warning "PKGBUILD not found"
         fi
-        
+
         # Return to the original directory
         cd $GITHUB_WORKSPACE
-        
+
         msg_ok "Translation process completed"
         replicate '#'
 
@@ -1162,4 +1159,4 @@ runs:
         <b>Duration:</b> <code>${hours}h ${minutes}m ${seconds}s</code>"
         send_telegram_message "$message"
         msg_ok "$message"
-        replicate '#'"
+        replicate '#'
