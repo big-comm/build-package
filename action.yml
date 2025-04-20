@@ -513,8 +513,14 @@ runs:
         
         # Use the local translation script
         msg_info "Running translation script with local script"
-        cd source_repo && PKGNAME=$(grep -m1 "pkgname=" PKGBUILD | cut -d'=' -f2 | tr -d '"') && \
-        OPENAI_KEY=${{ inputs.openai_key }} bash $GITHUB_WORKSPACE/usr/bin/gettext_po_generator_github.sh "$PKGNAME"
+        PKGBUILD_PATH=$(find source_repo -name PKGBUILD | head -n 1)
+        if [ -f "$PKGBUILD_PATH" ]; then
+          PKGBUILD_DIR=$(dirname "$PKGBUILD_PATH")
+          cd "$PKGBUILD_DIR" && PKGNAME=$(grep -m1 "pkgname=" PKGBUILD | cut -d'=' -f2 | tr -d '"') && \
+          cd $GITHUB_WORKSPACE/source_repo && OPENAI_KEY=${{ inputs.openai_key }} bash $GITHUB_WORKSPACE/usr/bin/gettext_po_generator_github.sh "$PKGNAME"
+        else
+          msg_warning "PKGBUILD not found"
+        fi
         
         # Return to the original directory
         cd $GITHUB_WORKSPACE
