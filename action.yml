@@ -471,18 +471,6 @@ runs:
         fi
         replicate '#'
 
-    - name: Install Translation Dependencies
-      if: ${{ inputs.translate == 'true' && env.LOCALE_DIR_EXISTS == 'true' }}
-      shell: bash
-      run: |
-        # Install Translation Dependencies
-        source /tmp/send_telegram_message.sh
-        replicate '#'
-        msg_info "Installing translation dependencies"
-        # Install attranslator
-        msg_run "sudo npm install --location=global attranslate"
-        replicate '#'
-
     - name: Process Translations
       if: ${{ inputs.translate == 'true' && env.LOCALE_DIR_EXISTS == 'true' }}
       shell: bash
@@ -494,29 +482,34 @@ runs:
         replicate '#'
         msg_info "Starting translation process"
 
-        # Get the real package/repository name
-        repo_name=$(basename $(pwd))
-        msg_info "Repository name detected: $repo_name"
+        # Get repository name to match the original workflow behavior
+        REPO_NAME="${{ env.REPO_ORIGEM_NAME }}"
+        msg_info "Repository name (package) to translate: $REPO_NAME"
 
-        # Get repository name for translation
-        gitfolder=$(echo ${{ github.repository }} | rev | cut -d "/" -f1 | rev)
-        msg_info "Git folder name: $gitfolder"
+        # Go to source repo root
+        cd $GITHUB_WORKSPACE/source_repo
+        msg_info "Current directory: $(pwd)"
+        msg_info "Contents of current directory:"
+        ls -la
 
-        # Create locale directory if needed
-        mkdir -p "$gitfolder/locale"
+        # Make sure we have locale directory with proper permissions
+        mkdir -p locale
+        chmod -R 755 locale
+        msg_info "Created locale directory with proper permissions"
 
-        # Make sure we have write access to the locale directory
-        chmod -R 755 "$gitfolder/locale"
+        # Execute the translation script exactly as the original workflow did -
+        # passing the repository name as parameter
+        msg_info "Executing translation script with repository name as parameter"
+        OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "$REPO_NAME"
 
-        # Use the translation script from PATH
-        msg_info "Running translation script"
-        PKGBUILD_PATH=$(find source_repo -name PKGBUILD | head -n 1)
-        if [ -f "$PKGBUILD_PATH" ]; then
-          PKGBUILD_DIR=$(dirname "$PKGBUILD_PATH")
-          cd "$PKGBUILD_DIR" && PKGNAME=$(grep -m1 "pkgname=" PKGBUILD | cut -d'=' -f2 | tr -d '"') && \
-          cd $GITHUB_WORKSPACE/source_repo && OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "$PKGNAME"
+        # Check translation results
+        if [ -f "locale/$REPO_NAME.pot" ]; then
+          msg_ok "Translation template created successfully"
+          msg_info "Contents of locale directory:"
+          ls -la locale/
         else
-          msg_warning "PKGBUILD not found"
+          msg_warning "Failed to create translation template. Trying fallback method..."
+          OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "."
         fi
 
         # Return to the original directory
