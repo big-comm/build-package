@@ -461,9 +461,19 @@ runs:
           echo "REPO_ORIGEM_NAME=$REPO_ORIGEM_NAME"   >> $GITHUB_ENV
           echo "REPO_ORIGEM_OWNER=$REPO_ORIGEM_OWNER" >> $GITHUB_ENV
 
+          # Determine which branch to use based on package type
           if [[ -n "${{ inputs.git_branch }}" ]]; then
+            # If git_branch is explicitly specified, use it
             msg_raw "Checking out branch: ${{ inputs.git_branch }}"
             msg_run "git checkout ${{ inputs.git_branch }}"
+          elif [[ "${{ inputs.branch_type }}" == "testing" && -n "${{ inputs.new_branch }}" ]]; then
+            # For testing packages, use the new_branch (dev-* branch)
+            msg_raw "Testing package: using dev branch: ${{ inputs.new_branch }}"
+            msg_run "git checkout ${{ inputs.new_branch }}"
+          else
+            # For stable/extra packages, use main branch
+            msg_raw "Stable/Extra package: using main branch"
+            # No checkout needed as main is the default
           fi
         else
           msg_warning "No URL provided, assuming already in the correct repository"
