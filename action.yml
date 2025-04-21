@@ -508,36 +508,32 @@ runs:
         chmod -R 755 locale
         msg_info "Created locale directory with proper permissions"
         
-        # First create a symlink to force the correct package name
-        # This helps the script use the right name for .mo files
-        if [ ! -e "$REPO_NAME" ]; then
-          ln -s . "$REPO_NAME"
-        fi
-        
-        # Execute the translation script directly with the current directory
-        # but pass an explicit DIRNAME parameter to preserve the package name
+        # Execute the translation script with the current directory
         msg_info "Executing translation script with package name: $REPO_NAME"
-        DIRNAME="$REPO_NAME" OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "."
+        OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "."
         
-        # Check translation results
-        if [ -f "locale/$REPO_NAME.pot" ]; then
-          msg_ok "Translation template created successfully"
-          msg_info "Contents of locale directory:"
-          ls -la locale/
-          
-          # Verify the .mo files have the correct name
-          find usr/share/locale -name "*.mo" | grep -v "$REPO_NAME.mo" | while read bad_file; do
-            correct_dir=$(dirname "$bad_file")
-            msg_info "Fixing filename: $bad_file → $correct_dir/$REPO_NAME.mo"
-            mv "$bad_file" "$correct_dir/$REPO_NAME.mo"
+        # Check if .mo files were created
+        if [ -d usr/share/locale ]; then
+          # Find and rename all incorrectly named .mo files
+          find usr/share/locale -type f -name "*.mo" | while read mo_file; do
+            mo_dir=$(dirname "$mo_file")
+            correct_name="$mo_dir/$REPO_NAME.mo"
+            
+            if [ "$mo_file" != "$correct_name" ]; then
+              msg_info "Renaming: $mo_file → $correct_name"
+              mv "$mo_file" "$correct_name"
+            fi
           done
+          
+          # Verify renaming was successful
+          incorrect_files=$(find usr/share/locale -type f -name "*.mo" ! -name "$REPO_NAME.mo" | wc -l)
+          if [ "$incorrect_files" -gt 0 ]; then
+            msg_warning "Some .mo files still have incorrect names!"
+          else
+            msg_ok "Successfully renamed all .mo files to $REPO_NAME.mo"
+          fi
         else
-          msg_warning "Failed to create translation template."
-        fi
-        
-        # Clean up symlink if we created one
-        if [ -L "$REPO_NAME" ]; then
-          rm "$REPO_NAME"
+          msg_warning "No locale directory structure was created by the translation process."
         fi
         
         # Return to the original directory
@@ -1188,4 +1184,4 @@ runs:
         <b>Duration:</b> <code>${hours}h ${minutes}m ${seconds}s</code>"
         send_telegram_message "$message"
         msg_ok "$message"
-        replicate '#'
+        replicate '#'"
