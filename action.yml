@@ -417,6 +417,7 @@ runs:
         export REPO_OWNER=""
         export REPO_NAME=""
         if [[ "${{ inputs.build_env }}" == "aur" ]]; then
+          # AUR package handling code - no changes needed
           msg_raw "Cloning AUR package from: ${{ inputs.url }}"
           msg_run "git clone ${{ inputs.url }} aur_package"
 
@@ -441,17 +442,6 @@ runs:
           msg_raw "Cloning repository from: ${{ inputs.url }}"
           msg_run "git clone ${{ inputs.url }}.git source_repo"
           
-          # Check for locale directory
-          if [[ -d "source_repo/locale" ]]; then
-            msg_info "Locale directory found - translation enabled"
-            echo "LOCALE_DIR_EXISTS=true" >> $GITHUB_ENV
-          else
-            msg_info "No locale directory found - translation will be skipped"
-            echo "LOCALE_DIR_EXISTS=false" >> $GITHUB_ENV
-          fi
-          
-          msg_run 'cd source_repo'
-
           # Extract information from cloned repository
           REPO_ORIGEM_URL="${{ inputs.repo_origem }}"
           REPO_ORIGEM_NAME=$(basename -s .git "$REPO_ORIGEM_URL")
@@ -460,7 +450,9 @@ runs:
           # Export to GitHub Actions environment
           echo "REPO_ORIGEM_NAME=$REPO_ORIGEM_NAME"   >> $GITHUB_ENV
           echo "REPO_ORIGEM_OWNER=$REPO_ORIGEM_OWNER" >> $GITHUB_ENV
-
+          
+          cd source_repo
+          
           # Determine which branch to use based on package type
           if [[ -n "${{ inputs.git_branch }}" ]]; then
             # If git_branch is explicitly specified, use it
@@ -474,6 +466,15 @@ runs:
             # For stable/extra packages, use main branch
             msg_raw "Stable/Extra package: using main branch"
             # No checkout needed as main is the default
+          fi
+          
+          # IMPORTANT: Only check for locale directory AFTER checking out the correct branch
+          if [[ -d "locale" ]]; then
+            msg_info "Locale directory found - translation enabled"
+            echo "LOCALE_DIR_EXISTS=true" >> $GITHUB_ENV
+          else
+            msg_info "No locale directory found - translation will be skipped"
+            echo "LOCALE_DIR_EXISTS=false" >> $GITHUB_ENV
           fi
         else
           msg_warning "No URL provided, assuming already in the correct repository"
