@@ -508,19 +508,36 @@ runs:
         chmod -R 755 locale
         msg_info "Created locale directory with proper permissions"
         
-        # Execute the translation script with the repository name as parameter
-        # instead of "." to ensure correct .mo file names
-        msg_info "Executing translation script with repository name: $REPO_NAME"
-        OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "$REPO_NAME"
+        # First create a symlink to force the correct package name
+        # This helps the script use the right name for .mo files
+        if [ ! -e "$REPO_NAME" ]; then
+          ln -s . "$REPO_NAME"
+        fi
+        
+        # Execute the translation script directly with the current directory
+        # but pass an explicit DIRNAME parameter to preserve the package name
+        msg_info "Executing translation script with package name: $REPO_NAME"
+        DIRNAME="$REPO_NAME" OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "."
         
         # Check translation results
         if [ -f "locale/$REPO_NAME.pot" ]; then
           msg_ok "Translation template created successfully"
           msg_info "Contents of locale directory:"
           ls -la locale/
+          
+          # Verify the .mo files have the correct name
+          find usr/share/locale -name "*.mo" | grep -v "$REPO_NAME.mo" | while read bad_file; do
+            correct_dir=$(dirname "$bad_file")
+            msg_info "Fixing filename: $bad_file → $correct_dir/$REPO_NAME.mo"
+            mv "$bad_file" "$correct_dir/$REPO_NAME.mo"
+          done
         else
-          msg_warning "Failed to create translation template. Trying with current directory..."
-          OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "."
+          msg_warning "Failed to create translation template."
+        fi
+        
+        # Clean up symlink if we created one
+        if [ -L "$REPO_NAME" ]; then
+          rm "$REPO_NAME"
         fi
         
         # Return to the original directory
