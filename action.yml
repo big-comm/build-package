@@ -508,33 +508,10 @@ runs:
         chmod -R 755 locale
         msg_info "Created locale directory with proper permissions"
         
-        # Execute the translation script with the current directory
-        msg_info "Executing translation script with package name: $REPO_NAME"
-        OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "."
-        
-        # Check if .mo files were created
-        if [ -d usr/share/locale ]; then
-          # Find and rename all incorrectly named .mo files
-          find usr/share/locale -type f -name "*.mo" | while read mo_file; do
-            mo_dir=$(dirname "$mo_file")
-            correct_name="$mo_dir/$REPO_NAME.mo"
-            
-            if [ "$mo_file" != "$correct_name" ]; then
-              msg_info "Renaming: $mo_file → $correct_name"
-              mv "$mo_file" "$correct_name"
-            fi
-          done
-          
-          # Verify renaming was successful
-          incorrect_files=$(find usr/share/locale -type f -name "*.mo" ! -name "$REPO_NAME.mo" | wc -l)
-          if [ "$incorrect_files" -gt 0 ]; then
-            msg_warning "Some .mo files still have incorrect names!"
-          else
-            msg_ok "Successfully renamed all .mo files to $REPO_NAME.mo"
-          fi
-        else
-          msg_warning "No locale directory structure was created by the translation process."
-        fi
+        # Execute the translation script - pass "." as DIR but override DIRNAME with REPO_NAME
+        # This is the key fix - we explicitly set DIRNAME to be different from DIR
+        msg_info "Executing translation script for package: $REPO_NAME"
+        DIRNAME="$REPO_NAME" OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "."
         
         # Return to the original directory
         cd $GITHUB_WORKSPACE
