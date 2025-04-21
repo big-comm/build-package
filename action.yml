@@ -540,9 +540,17 @@ runs:
         if git commit -m "translate $(date +%y-%m-%d_%H:%M)" -a; then
           msg_ok "Translation changes committed"
           
-          # Push changes if there are any
-          git push
-          msg_ok "Translation changes pushed to repository"
+          # Configure remote with token for authentication
+          remote_url=$(git config --get remote.origin.url)
+          authenticated_url="https://x-access-token:${{ inputs.github_token }}@github.com/${remote_url#https://github.com/}"
+          git remote set-url origin "$authenticated_url"
+          
+          # Push changes with authentication
+          if git push origin HEAD; then
+            msg_ok "Translation changes pushed to repository"
+          else
+            msg_warning "Failed to push translation changes"
+          fi
         else
           msg_info "No translation changes to commit"
         fi
