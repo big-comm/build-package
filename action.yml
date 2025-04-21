@@ -508,10 +508,10 @@ runs:
         chmod -R 755 locale
         msg_info "Created locale directory with proper permissions"
         
-        # Execute the translation script with "." as parameter to use current directory
-        # instead of looking for a subdirectory
-        msg_info "Executing translation script with current directory"
-        OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "."
+        # Execute the translation script with the repository name as parameter
+        # instead of "." to ensure correct .mo file names
+        msg_info "Executing translation script with repository name: $REPO_NAME"
+        OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "$REPO_NAME"
         
         # Check translation results
         if [ -f "locale/$REPO_NAME.pot" ]; then
@@ -519,8 +519,8 @@ runs:
           msg_info "Contents of locale directory:"
           ls -la locale/
         else
-          msg_warning "Failed to create translation template. Trying with package name..."
-          OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "$REPO_NAME"
+          msg_warning "Failed to create translation template. Trying with current directory..."
+          OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "."
         fi
         
         # Return to the original directory
