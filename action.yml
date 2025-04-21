@@ -1184,4 +1184,4 @@ runs:
         <b>Duration:</b> <code>${hours}h ${minutes}m ${seconds}s</code>"
         send_telegram_message "$message"
         msg_ok "$message"
-        replicate '#'"
+        replicate '#'
