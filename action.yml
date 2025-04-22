@@ -278,7 +278,7 @@ runs:
         pkgname_escaped="$pkgname"
         branch_escaped="${branch}"
 
-        message="🌠 <b>[step 1/4] build-package - STARTING PACKAGE CREATION</b>
+        message="🏁 <b>[step 1/4] build-package - STARTING PACKAGE CREATION</b>
         <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
         <b>Workflow:</b> <code>build-package/action.yml</code>
         <b>Name:</b> <code>${pkgname_escaped}</code>
@@ -658,6 +658,18 @@ runs:
           # Ensure architecture is set to x86_64
           sed -i "/^arch=/c\arch=('x86_64')" PKGBUILD
           msg_info "Build arch=x86_64"
+          
+          # Configure correct branch in PKGBUILD based on build type
+          msg_info "# Configuring correct branch in PKGBUILD"
+          if [ "${{ inputs.branch_type }}" == "testing" ]; then
+            # For testing builds, use dev-* branch
+            sed -i "s|source=(\"git+\${url}.git\")|source=(\"git+\${url}.git#branch=${{ inputs.new_branch }}\")|" PKGBUILD
+            msg_info "PKGBUILD configured to use branch: ${{ inputs.new_branch }}"
+          else
+            # For stable/extra builds, use main branch
+            sed -i "s|source=(\"git+\${url}.git\")|source=(\"git+\${url}.git#branch=main\")|" PKGBUILD
+            msg_info "PKGBUILD configured to use branch: main"
+          fi
 
           # Determine build branch
           if [ "${{ inputs.build_env }}" == "extra" ]; then
