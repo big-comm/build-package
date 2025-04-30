@@ -670,6 +670,17 @@ runs:
             if [ "${{ inputs.branch_type }}" == "testing" ]; then
               # For testing builds, use dev-* branch
               sed -i "${line_number}s|.*|source=(\"git+\${url}.git#branch=${{ inputs.new_branch }}\")|" PKGBUILD
+              # Check if the replacement worked
+              echo "Contents of PKGBUILD after replacement:"
+              cat PKGBUILD | grep "source="
+
+              # Explicitly check if the correct branch is in the PKGBUILD
+              if grep -q "#branch=${{ inputs.new_branch }}" PKGBUILD; then
+                echo "✅ Branch ${{ inputs.new_branch }} correctly configured in PKGBUILD"
+              else
+                echo "❌ Branch was NOT correctly configured in PKGBUILD"
+              fi
+
               msg_info "PKGBUILD configured to use branch: ${{ inputs.new_branch }}"
             else
               # For stable/extra builds, use main branch
