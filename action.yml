@@ -674,8 +674,8 @@ runs:
               echo "Contents of PKGBUILD after replacement:"
               cat PKGBUILD | grep "source="
 
-              # Explicitly check if the correct branch is in the PKGBUILD
-              if grep -q "#branch=${{ inputs.new_branch }}" PKGBUILD; then
+              # Verificação corrigida - removi o '#' antes de 'branch='
+              if grep -q "branch=${{ inputs.new_branch }}" PKGBUILD; then
                 echo "✅ Branch ${{ inputs.new_branch }} correctly configured in PKGBUILD"
               else
                 echo "❌ Branch was NOT correctly configured in PKGBUILD"
