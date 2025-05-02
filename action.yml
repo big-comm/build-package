@@ -665,27 +665,21 @@ runs:
           source_line=$(grep -n "source=" PKGBUILD | head -1)
           line_number=$(echo "$source_line" | cut -d':' -f1)
 
-          # Replace that specific line with appropriate branch
+          # Replacement code for the branch modification part
           if [ -n "$line_number" ]; then
             if [ "${{ inputs.branch_type }}" == "testing" ]; then
-              # For testing builds, use dev-* branch
+              # For testing packages, use dev-* branch
               sed -i "${line_number}s|.*|source=(\"git+\${url}.git#branch=${{ inputs.new_branch }}\")|" PKGBUILD
-              # Check if the replacement worked
-              echo "Contents of PKGBUILD after replacement:"
-              cat PKGBUILD | grep "source="
-
-              # Verificação corrigida - removi o '#' antes de 'branch='
-              if grep -q "branch=${{ inputs.new_branch }}" PKGBUILD; then
-                echo "✅ Branch ${{ inputs.new_branch }} correctly configured in PKGBUILD"
-              else
-                echo "❌ Branch was NOT correctly configured in PKGBUILD"
-              fi
-
               msg_info "PKGBUILD configured to use branch: ${{ inputs.new_branch }}"
             else
-              # For stable/extra builds, use main branch
-              sed -i "${line_number}s|.*|source=(\"git+\${url}.git#branch=main\")|" PKGBUILD
-              msg_info "PKGBUILD configured to use branch: main"
+              # Check if a branch is already specified
+              if grep -q "#branch=" <<< "$(grep "source=" PKGBUILD)"; then
+                # If a branch is specified, keep it as is
+                msg_info "Branch already specified in PKGBUILD - keeping original configuration"
+              else
+                # If no branch is specified, use the default branch (don't force 'main')
+                msg_info "No branch specified in PKGBUILD - using repository default branch"
+              fi
             fi
           else
             msg_warning "Could not find source line in PKGBUILD"
