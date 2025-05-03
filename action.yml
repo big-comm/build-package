@@ -817,15 +817,15 @@ runs:
         msg_raw "IP: $ip"
         msg_run "ls -lha $PWD"
 
-        # First, rename files with : to .
-        for i in *.pkg.tar.zst; do
-            new_name=${i//:/.}
-            if [ "$i" != "$new_name" ]; then
-                mv "$i" "$new_name"
-                [ -f "$i.sig" ] && mv "$i.sig" "$new_name.sig"
-                [ -f "$i.md5" ] && mv "$i.md5" "$new_name.md5"
-            fi
-        done
+        # # First, rename files with : to .
+        # for i in *.pkg.tar.zst; do
+        #     new_name=${i//:/.}
+        #     if [ "$i" != "$new_name" ]; then
+        #         mv "$i" "$new_name"
+        #         [ -f "$i.sig" ] && mv "$i.sig" "$new_name.sig"
+        #         [ -f "$i.md5" ] && mv "$i.md5" "$new_name.md5"
+        #     fi
+        # done
 
         for i in *.pkg.tar.zst; do
             msg_info "=== Processing file: $i ==="
@@ -939,15 +939,110 @@ runs:
             local pkg_pattern="*.pkg.tar.zst"
             local count=0
             
-            # Use find to list all packages
-            find . -maxdepth 1 -type f -name "\${pkg_pattern}" | sort -Vr | \
-            awk -F/ '{split(\$NF,a,"-[0-9]"); if (seen[a[1]]++) print \$0}' | \
-            while read -r pkg; do
-              if [ -f "\${pkg}" ]; then
-                count=\$((count + 1))
-                echo "Removing old package [\${count}]: \${pkg}"
-                rm -f "\${pkg}" "\${pkg}.sig" "\${pkg}.md5"
+            # Helper function to extract base package name (without version)
+            extract_pkgbase() {
+              local pkgname="$1"
+              # Remove .pkg.tar.zst extension
+              pkgname="${pkgname%.pkg.tar.zst}"
+              # Extract base name (everything before the first hyphen followed by a number)
+              echo "$pkgname" | sed -E 's/^(.*?)-[0-9].*/\1/'
+            }
+            
+            # Function to extract version with epoch
+            extract_version() {
+              local pkgname="$1"
+              # Remove .pkg.tar.zst extension
+              pkgname="${pkgname%.pkg.tar.zst}"
+              # Extract version (everything after the first hyphen)
+              local version=$(echo "$pkgname" | sed -E 's/^.*?-([0-9].*)$/\1/')
+              echo "$version"
+            }
+            
+            # Function to semantically compare versions, considering epoch
+            version_gt() {
+              if [ -z "$1" ] || [ -z "$2" ]; then
+                return 1
               fi
+              
+              # Extract epoch from first version (if exists)
+              local v1="$1"
+              local e1=0
+              if [[ "$v1" == *:* ]]; then
+                e1="${v1%%:*}"
+                v1="${v1#*:}"
+              elif [[ "$v1" == *.* && "${v1%%.*}" =~ ^[0-9]+$ ]]; then
+                # If there's a dot format and the first component is numeric, it might be an epoch
+                e1="${v1%%.*}"
+                v1="${v1#*.}"
+              fi
+              
+              # Extract epoch from second version (if exists)
+              local v2="$2"
+              local e2=0
+              if [[ "$v2" == *:* ]]; then
+                e2="${v2%%:*}"
+                v2="${v2#*:}"
+              elif [[ "$v2" == *.* && "${v2%%.*}" =~ ^[0-9]+$ ]]; then
+                # If there's a dot format and the first component is numeric, it might be an epoch
+                e2="${v2%%.*}"
+                v2="${v2#*.}"
+              fi
+              
+              # Compare first by epoch
+              if [ "$e1" -gt "$e2" ]; then
+                return 0
+              elif [ "$e1" -lt "$e2" ]; then
+                return 1
+              fi
+              
+              # If epochs are equal, compare versions using pacman's vercmp
+              if command -v vercmp >/dev/null 2>&1; then
+                [ "$(vercmp "$v1" "$v2")" -gt 0 ]
+              else
+                # Fallback to simplified comparison if vercmp is not available
+                [ "$v1" != "$v2" ] && [ "$(printf '%s\n' "$v2" "$v1" | sort -V | head -n1)" != "$v1" ]
+              fi
+            }
+            
+            # Store packages by base name
+            declare -A pkgs_by_name
+            
+            # First, group all packages by base name
+            while read -r pkg; do
+              if [ -f "$pkg" ]; then
+                local pkgbase=$(extract_pkgbase "$pkg")
+                if [ -z "${pkgs_by_name[$pkgbase]}" ]; then
+                  pkgs_by_name[$pkgbase]="$pkg"
+                else
+                  pkgs_by_name[$pkgbase]="${pkgs_by_name[$pkgbase]}|$pkg"
+                fi
+              fi
+            done < <(find . -maxdepth 1 -type f -name "$pkg_pattern")
+            
+            # Then, for each base name, keep only the most recent version
+            for pkgbase in "${!pkgs_by_name[@]}"; do
+              local pkg_list="${pkgs_by_name[$pkgbase]}"
+              local newest_pkg=""
+              local newest_ver=""
+              
+              # Find the newest package
+              IFS='|' read -ra pkgs <<< "$pkg_list"
+              for pkg in "${pkgs[@]}"; do
+                local ver=$(extract_version "$pkg")
+                if [ -z "$newest_pkg" ] || version_gt "$ver" "$newest_ver"; then
+                  newest_pkg="$pkg"
+                  newest_ver="$ver"
+                fi
+              done
+              
+              # Remove all except the newest
+              for pkg in "${pkgs[@]}"; do
+                if [ "$pkg" != "$newest_pkg" ]; then
+                  count=$((count + 1))
+                  echo "Removing old package [$count]: $pkg"
+                  rm -f "$pkg" "$pkg.sig" "$pkg.md5"
+                fi
+              done
             done
           }
 
