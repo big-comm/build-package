@@ -929,7 +929,7 @@ runs:
         repo_dir="${{ inputs.repo_dir }}"
         
         # Execute SSH command with heredoc
-        ssh "${{ inputs.repo_user }}@${{ inputs.repo_host }}" -p "${{ inputs.repo_port }}" << EOF
+        ssh "${{ inputs.repo_user }}@${{ inputs.repo_host }}" -p "${{ inputs.repo_port }}" "bash -s" << EOF
           # Determine correct directory based on branch_type
           if [[ "$branch_type" == "aur" ]]; then
             target_dir="$repo_dir/extra/x86_64"
