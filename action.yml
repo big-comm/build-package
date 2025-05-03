@@ -921,100 +921,70 @@ runs:
         <b>branch:</b> <code>${branch_escaped}</code>"
         send_telegram_message "$message"
 
-        ssh "${{ inputs.repo_user }}@${{ inputs.repo_host }}" -p "${{ inputs.repo_port }}" << 'EOSSH'
+        # Generate unique marker for heredoc to prevent variable expansion conflicts
+        MARKER="EOF_${RANDOM}_${RANDOM}"
+
+        # Prepare variables for SSH command
+        branch_type="${{ inputs.branch_type }}"
+        repo_dir="${{ inputs.repo_dir }}"
+        
+        # Execute SSH command with heredoc
+        ssh "${{ inputs.repo_user }}@${{ inputs.repo_host }}" -p "${{ inputs.repo_port }}" << EOF
           # Determine correct directory based on branch_type
-          if [[ "${{ inputs.branch_type }}" == "aur" ]]; then
-            target_dir="${{ inputs.repo_dir }}/extra/x86_64"
+          if [[ "$branch_type" == "aur" ]]; then
+            target_dir="$repo_dir/extra/x86_64"
           else
-            target_dir="${{ inputs.repo_dir }}/${{ inputs.branch_type }}/x86_64"
+            target_dir="$repo_dir/$branch_type/x86_64"
           fi
           
-          mkdir -p "${target_dir}"
-          cd "${target_dir}" || exit 1
+          mkdir -p "\${target_dir}"
+          cd "\${target_dir}" || exit 1
 
-          echo "Current path: $(pwd)"
+          echo "Current path: \$(pwd)"
           ls -lah
 
-          # IMPORTANT: Functions defined OUTSIDE of process_old_packages
-          # Function to extract base package name (without version)
+          # Simple function to extract package base name
           extract_pkgbase() {
-            local pkgname="${1%.pkg.tar.zst}"
-            echo "$pkgname" | sed -E 's/(-[0-9]+:)?[^-]*-[^-]*-x86_64$//'
-          }
-
-          # Function to extract version with epoch
-          extract_version() {
-            local pkgname="${1%.pkg.tar.zst}"
-            echo "$pkgname" | sed -E 's/.*-(([0-9]+:)?[^-]*-[^-]*)-x86_64$/\1/'
+            echo "\${1%%-[0-9]*}"
           }
           
-          # Function to semantically compare versions
-          version_gt() {
-            if [ -z "$1" ] || [ -z "$2" ]; then
-              return 1
-            fi
-            
-            if command -v vercmp >/dev/null 2>&1; then
-              test "$(vercmp "$1" "$2")" -gt 0
-            else
-              # Fallback if vercmp is not available
-              [ "$1" != "$2" ] && [ "$(printf '%s\n' "$2" "$1" | sort -V | head -n1)" != "$1" ]
-            fi
-          }
-          
-          # Main function to process old packages
-          process_old_packages() {
-            local pkg_pattern="*.pkg.tar.zst"
-            local count=0
-            
-            # Store packages by base name
-            declare -A pkgs_by_name
-            
-            # First, group all packages by base name
-            while read -r pkg; do
-              if [ -f "$pkg" ]; then
-                local pkgbase=$(extract_pkgbase "$pkg")
-                if [ -z "${pkgs_by_name[$pkgbase]}" ]; then
-                  pkgs_by_name[$pkgbase]="$pkg"
-                else
-                  pkgs_by_name[$pkgbase]="${pkgs_by_name[$pkgbase]}|$pkg"
-                fi
-              fi
-            done < <(find . -maxdepth 1 -type f -name "$pkg_pattern")
-            
-            # Then, for each base name, keep only the most recent version
-            for pkgbase in "${!pkgs_by_name[@]}"; do
-              echo "Processing package group: $pkgbase"
-              local pkg_list="${pkgs_by_name[$pkgbase]}"
-              local newest_pkg=""
-              local newest_ver=""
-              
-              # Find the newest package
-              IFS='|' read -ra pkgs <<< "$pkg_list"
-              for pkg in "${pkgs[@]}"; do
-                local ver=$(extract_version "$pkg")
-                if [ -z "$newest_pkg" ] || version_gt "$ver" "$newest_ver"; then
-                  newest_pkg="$pkg"
-                  newest_ver="$ver"
-                fi
-              done
-              
-              echo "  Keeping newest version: $newest_pkg"
-              
-              # Remove all except the newest
-              for pkg in "${pkgs[@]}"; do
-                if [ "$pkg" != "$newest_pkg" ]; then
-                  count=$((count + 1))
-                  echo "  Removing old package [$count]: $pkg"
-                  rm -f "$pkg" "$pkg.sig" "$pkg.md5"
-                fi
-              done
-            done
-          }
-
-          # Main cleanup process
+          # Process packages by grouping them by base name and keeping only newest version
           echo "Processing old packages..."
-          process_old_packages
+          
+          # Get list of all package files
+          pkg_files=(\$(ls *.pkg.tar.zst 2>/dev/null || echo ""))
+          
+          # Group packages by base name
+          declare -A pkg_groups
+          for pkg in "\${pkg_files[@]}"; do
+            [ -z "\$pkg" ] && continue
+            base=\$(extract_pkgbase "\$pkg")
+            pkg_groups["\$base"]="\${pkg_groups["\$base"]} \$pkg"
+          done
+          
+          # For each group, keep only the newest package
+          for base in "\${!pkg_groups[@]}"; do
+            echo "Package group: \$base"
+            files=(\${pkg_groups["\$base"]})
+            
+            # Find newest by creation time (simpler but reliable approach)
+            newest=""
+            for file in "\${files[@]}"; do
+              if [ -z "\$newest" ] || [ "\$file" -nt "\$newest" ]; then
+                newest="\$file"
+              fi
+            done
+            
+            echo "  Keeping newest: \$newest"
+            
+            # Remove all except newest
+            for file in "\${files[@]}"; do
+              if [ "\$file" != "\$newest" ]; then
+                echo "  Removing: \$file"
+                rm -f "\$file" "\$file.sig" "\$file.md5"
+              fi
+            done
+          done
 
           # Remove and recreate database
           echo "Updating database..."
@@ -1034,10 +1004,10 @@ runs:
           # Clean orphaned files
           echo "Looking for orphaned files..."
           find . -maxdepth 1 -type f \( -name "*.sig" -o -name "*.md5" \) | while read -r file; do
-            base_name="${file%.*}"
-            if [ ! -f "${base_name}" ]; then
-              echo "Removing orphaned file: ${file}"
-              rm -f "${file}"
+            base_name="\${file%.*}"
+            if [ ! -f "\${base_name}" ]; then
+              echo "Removing orphaned file: \${file}"
+              rm -f "\${file}"
             fi
           done
 
@@ -1046,7 +1016,7 @@ runs:
           ls -la
           
           exit 0
-        EOSSH
+        EOF
         retval="$?"
 
         if [[ $retval -eq 0 ]]; then
