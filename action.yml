@@ -455,9 +455,16 @@ runs:
           
           # Determine which branch to use based on package type
           if [[ -n "${{ inputs.git_branch }}" ]]; then
-            # If git_branch is explicitly specified, use it
-            msg_raw "Checking out branch: ${{ inputs.git_branch }}"
-            msg_run "git checkout ${{ inputs.git_branch }}"
+            # Check if the specified branch exists
+            if git ls-remote --heads origin ${{ inputs.git_branch }} | grep -q ${{ inputs.git_branch }}; then
+              # Branch exists, checkout
+              msg_raw "Checking out branch: ${{ inputs.git_branch }}"
+              msg_run "git checkout ${{ inputs.git_branch }}"
+            else
+              # Branch doesn't exist, fallback to main
+              msg_raw "Branch ${{ inputs.git_branch }} doesn't exist, using main as fallback"
+              msg_run "git checkout main || git checkout master"
+            fi
           elif [[ "${{ inputs.branch_type }}" == "testing" && -n "${{ inputs.new_branch }}" ]]; then
             # For testing packages, use the new_branch (dev-* branch)
             msg_raw "Testing package: using dev branch: ${{ inputs.new_branch }}"
