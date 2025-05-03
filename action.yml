@@ -854,10 +854,10 @@ runs:
 
             # Log rsync command to be executed
             msg_info "=== rsync command to be executed ==="
-            rsync_cmd="rsync --itemize-changes -apz -e \"ssh -p ${{ inputs.repo_port }}\" $i ${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/${branch,,}/x86_64/"
+            rsync_cmd="rsync --itemize-changes -apz -e \"ssh -p ${{ inputs.repo_port }}\" ./$i ${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/${branch,,}/x86_64/"
             msg_raw "rsync command: $rsync_cmd"
 
-            if rsync --itemize-changes -v -apz -e "ssh -p ${{ inputs.repo_port }}" "$i" "${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/${branch,,}/x86_64/" 2>&1; then
+            if rsync --itemize-changes -v -apz -e "ssh -p ${{ inputs.repo_port }}" "./$i" "${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/${branch,,}/x86_64/" 2>&1; then
                 message="✅ <b>[step 2.1/4] build-package - PACKAGE SENT SUCCESSFULLY</b>
                 <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
                 <b>Workflow:</b> <code>build-package/action.yml</code>
@@ -883,7 +883,7 @@ runs:
             [[ ! -f "$i" ]] && continue  # Skip if file doesn't exist
             msg_raw "Processing file: $i"
             msg_raw "Sending file: $i"
-            rsync --itemize-changes -v -apz -e "ssh -p ${{ inputs.repo_port }}" "$i" "${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/${branch,,}/x86_64/" 2>&1
+            rsync --itemize-changes -v -apz -e "ssh -p ${{ inputs.repo_port }}" "./$i" "${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/${branch,,}/x86_64/" 2>&1
         done
         replicate '#'
 
