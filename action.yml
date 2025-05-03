@@ -894,18 +894,19 @@ runs:
         # Clean Old Packages - keeps only the most recent package
         source /tmp/send_telegram_message.sh
         replicate '#'
+        
         msg_info '# Determine the branch and database name based on the branch type'
         case "${{ inputs.branch_type }}" in
           "stable")
-          branch="STABLE"
+            branch="STABLE"
             db_name="community-stable"
             ;;
           "aur" | "extra")
-          branch="EXTRA"
+            branch="EXTRA"
             db_name="community-extra"
             ;;
           "testing")
-          branch="TESTING"
+            branch="TESTING"
             db_name="community-testing"
             ;;
           *)
@@ -920,7 +921,7 @@ runs:
         <b>branch:</b> <code>${branch_escaped}</code>"
         send_telegram_message "$message"
 
-        ssh "${{ inputs.repo_user }}@${{ inputs.repo_host }}" -p "${{ inputs.repo_port }}" << EOF
+        ssh "${{ inputs.repo_user }}@${{ inputs.repo_host }}" -p "${{ inputs.repo_port }}" << 'EOSSH'
           # Determine correct directory based on branch_type
           if [[ "${{ inputs.branch_type }}" == "aur" ]]; then
             target_dir="${{ inputs.repo_dir }}/extra/x86_64"
@@ -928,81 +929,43 @@ runs:
             target_dir="${{ inputs.repo_dir }}/${{ inputs.branch_type }}/x86_64"
           fi
           
-          mkdir -p "\${target_dir}"
-          cd "\${target_dir}" || exit 1
+          mkdir -p "${target_dir}"
+          cd "${target_dir}" || exit 1
 
-          echo "Current path: \$(pwd)"
+          echo "Current path: $(pwd)"
           ls -lah
 
-          # Function to process old packages
+          # IMPORTANT: Functions defined OUTSIDE of process_old_packages
+          # Function to extract base package name (without version)
+          extract_pkgbase() {
+            local pkgname="${1%.pkg.tar.zst}"
+            echo "$pkgname" | sed -E 's/(-[0-9]+:)?[^-]*-[^-]*-x86_64$//'
+          }
+
+          # Function to extract version with epoch
+          extract_version() {
+            local pkgname="${1%.pkg.tar.zst}"
+            echo "$pkgname" | sed -E 's/.*-(([0-9]+:)?[^-]*-[^-]*)-x86_64$/\1/'
+          }
+          
+          # Function to semantically compare versions
+          version_gt() {
+            if [ -z "$1" ] || [ -z "$2" ]; then
+              return 1
+            fi
+            
+            if command -v vercmp >/dev/null 2>&1; then
+              test "$(vercmp "$1" "$2")" -gt 0
+            else
+              # Fallback if vercmp is not available
+              [ "$1" != "$2" ] && [ "$(printf '%s\n' "$2" "$1" | sort -V | head -n1)" != "$1" ]
+            fi
+          }
+          
+          # Main function to process old packages
           process_old_packages() {
             local pkg_pattern="*.pkg.tar.zst"
             local count=0
-            
-            # Helper function to extract base package name (without version)
-            extract_pkgbase() {
-              local pkgname="$1"
-              # Remove .pkg.tar.zst extension
-              pkgname="${pkgname%.pkg.tar.zst}"
-              # Extract base name (everything before the first hyphen followed by a number)
-              echo "$pkgname" | sed -E 's/^(.*?)-[0-9].*/\1/'
-            }
-            
-            # Function to extract version with epoch
-            extract_version() {
-              local pkgname="$1"
-              # Remove .pkg.tar.zst extension
-              pkgname="${pkgname%.pkg.tar.zst}"
-              # Extract version (everything after the first hyphen)
-              local version=$(echo "$pkgname" | sed -E 's/^.*?-([0-9].*)$/\1/')
-              echo "$version"
-            }
-            
-            # Function to semantically compare versions, considering epoch
-            version_gt() {
-              if [ -z "$1" ] || [ -z "$2" ]; then
-                return 1
-              fi
-              
-              # Extract epoch from first version (if exists)
-              local v1="$1"
-              local e1=0
-              if [[ "$v1" == *:* ]]; then
-                e1="${v1%%:*}"
-                v1="${v1#*:}"
-              elif [[ "$v1" == *.* && "${v1%%.*}" =~ ^[0-9]+$ ]]; then
-                # If there's a dot format and the first component is numeric, it might be an epoch
-                e1="${v1%%.*}"
-                v1="${v1#*.}"
-              fi
-              
-              # Extract epoch from second version (if exists)
-              local v2="$2"
-              local e2=0
-              if [[ "$v2" == *:* ]]; then
-                e2="${v2%%:*}"
-                v2="${v2#*:}"
-              elif [[ "$v2" == *.* && "${v2%%.*}" =~ ^[0-9]+$ ]]; then
-                # If there's a dot format and the first component is numeric, it might be an epoch
-                e2="${v2%%.*}"
-                v2="${v2#*.}"
-              fi
-              
-              # Compare first by epoch
-              if [ "$e1" -gt "$e2" ]; then
-                return 0
-              elif [ "$e1" -lt "$e2" ]; then
-                return 1
-              fi
-              
-              # If epochs are equal, compare versions using pacman's vercmp
-              if command -v vercmp >/dev/null 2>&1; then
-                [ "$(vercmp "$v1" "$v2")" -gt 0 ]
-              else
-                # Fallback to simplified comparison if vercmp is not available
-                [ "$v1" != "$v2" ] && [ "$(printf '%s\n' "$v2" "$v1" | sort -V | head -n1)" != "$v1" ]
-              fi
-            }
             
             # Store packages by base name
             declare -A pkgs_by_name
@@ -1021,6 +984,7 @@ runs:
             
             # Then, for each base name, keep only the most recent version
             for pkgbase in "${!pkgs_by_name[@]}"; do
+              echo "Processing package group: $pkgbase"
               local pkg_list="${pkgs_by_name[$pkgbase]}"
               local newest_pkg=""
               local newest_ver=""
@@ -1035,18 +999,20 @@ runs:
                 fi
               done
               
+              echo "  Keeping newest version: $newest_pkg"
+              
               # Remove all except the newest
               for pkg in "${pkgs[@]}"; do
                 if [ "$pkg" != "$newest_pkg" ]; then
                   count=$((count + 1))
-                  echo "Removing old package [$count]: $pkg"
+                  echo "  Removing old package [$count]: $pkg"
                   rm -f "$pkg" "$pkg.sig" "$pkg.md5"
                 fi
               done
             done
           }
 
-          # Process old packages
+          # Main cleanup process
           echo "Processing old packages..."
           process_old_packages
 
@@ -1068,10 +1034,10 @@ runs:
           # Clean orphaned files
           echo "Looking for orphaned files..."
           find . -maxdepth 1 -type f \( -name "*.sig" -o -name "*.md5" \) | while read -r file; do
-            base_name="\${file%.*}"
-            if [ ! -f "\${base_name}" ]; then
-              echo "Removing orphaned file: \${file}"
-              rm -f "\${file}"
+            base_name="${file%.*}"
+            if [ ! -f "${base_name}" ]; then
+              echo "Removing orphaned file: ${file}"
+              rm -f "${file}"
             fi
           done
 
@@ -1080,7 +1046,7 @@ runs:
           ls -la
           
           exit 0
-        EOF
+        EOSSH
         retval="$?"
 
         if [[ $retval -eq 0 ]]; then
