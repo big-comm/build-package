@@ -669,78 +669,64 @@ runs:
           # Configure correct branch in PKGBUILD based on build type
           msg_info "# Configuring correct branch in PKGBUILD"
 
-          # Function to modify git URLs in source array
-          modify_git_source() {
-            local branch="$1"
-            local temp_file=$(mktemp)
-            
-            awk -v branch="$branch" '
-            BEGIN { in_source = 0; source_level = 0 }
-            
-            # Detect start of source array
-            /^[[:space:]]*source[[:space:]]*=/ {
-              in_source = 1
-              print $0
-              if ($0 ~ /\($/) source_level = 1
-              next
-            }
-            
-            # Handle content inside source array
-            in_source == 1 {
-              # Count parentheses to detect end of array
-              temp = $0
-              gsub(/[^(]/, "", temp); open_parens = length(temp)
-              temp2 = $0
-              gsub(/[^)]/, "", temp2); close_parens = length(temp2)
-              source_level += open_parens - close_parens
-              
-              # Check if this line contains a git URL
-              if ($0 ~ /git\+.*\.git/ && $0 ~ /"/) {
-                # Extract the git URL and modify it
-                if ($0 ~ /#branch=/ || $0 ~ /#tag=/) {
-                  # Already has branch/tag, replace it
-                  gsub(/#[^"]*/, "#branch=" branch, $0)
-                } else {
-                  # Add branch to git URL
-                  gsub(/\.git"/, ".git#branch=" branch "\"", $0)
-                }
-              }
-              
-              print $0
-              
-              # End of source array
-              if (source_level <= 0) {
-                in_source = 0
-              }
-              next
-            }
-            
-            # Print all other lines unchanged
-            { print $0 }
-            ' PKGBUILD > "$temp_file"
-            
-            mv "$temp_file" PKGBUILD
-          }
-
-          # Apply modification only for testing packages
           if [ "${{ inputs.branch_type }}" == "testing" ]; then
-            # Check if PKGBUILD contains git URLs in source
-            if grep -q "git+" PKGBUILD; then
-              msg_info "Modifying git URLs in PKGBUILD to use branch: ${{ inputs.new_branch }}"
-              modify_git_source "${{ inputs.new_branch }}"
+            # Check if this is our repository (biglinux or big-comm)
+            if grep -q "github.com/biglinux\|github.com/big-comm" PKGBUILD; then
+              msg_info "Detected our repository - modifying to use branch: ${{ inputs.new_branch }}"
+              
+              # Function to modify git URLs in our repositories only
+              awk -v branch="${{ inputs.new_branch }}" '
+              BEGIN { in_source = 0; source_level = 0 }
+              
+              # Detect start of source array
+              /^[[:space:]]*source[[:space:]]*=/ {
+                in_source = 1
+                print $0
+                if ($0 ~ /\($/) source_level = 1
+                next
+              }
+              
+              # Handle content inside source array
+              in_source == 1 {
+                # Count parentheses to detect end of array
+                temp = $0
+                gsub(/[^(]/, "", temp); open_parens = length(temp)
+                temp2 = $0
+                gsub(/[^)]/, "", temp2); close_parens = length(temp2)
+                source_level += open_parens - close_parens
+                
+                # Check if this line contains our git URL
+                if ($0 ~ /git\+.*github\.com\/(biglinux|big-comm).*\.git/ && $0 ~ /"/) {
+                  # Modify our repository URLs
+                  if ($0 ~ /#branch=/ || $0 ~ /#tag=/) {
+                    # Already has branch/tag, replace it
+                    gsub(/#[^"]*/, "#branch=" branch, $0)
+                  } else {
+                    # Add branch to git URL
+                    gsub(/\.git"/, ".git#branch=" branch "\"", $0)
+                  }
+                }
+                
+                print $0
+                
+                # End of source array
+                if (source_level <= 0) {
+                  in_source = 0
+                }
+                next
+              }
+              
+              # Print all other lines unchanged
+              { print $0 }
+              ' PKGBUILD > /tmp/pkgbuild_temp && mv /tmp/pkgbuild_temp PKGBUILD
+              
               msg_info "PKGBUILD configured to use branch: ${{ inputs.new_branch }}"
             else
-              msg_info "No git URLs found in PKGBUILD source array"
+              msg_info "External repository detected - keeping original source configuration for testing"
             fi
           else
-            # Check if a branch is already specified
-            if grep -q "#branch=" PKGBUILD || grep -q "#tag=" PKGBUILD; then
-              # If a branch/tag is specified, keep it as is
-              msg_info "Branch/tag already specified in PKGBUILD - keeping original configuration"
-            else
-              # If no branch is specified, use the default branch (don't force 'main')
-              msg_info "No branch specified in PKGBUILD - using repository default branch"
-            fi
+            # For stable/extra, keep original configuration
+            msg_info "Using original source configuration for stable/extra build"
           fi
 
           # Determine build branch
