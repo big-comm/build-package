@@ -688,8 +688,10 @@ runs:
             # Handle content inside source array
             in_source == 1 {
               # Count parentheses to detect end of array
+              temp = $0
               gsub(/[^(]/, "", temp); open_parens = length(temp)
-              gsub(/[^)]/, "", temp2 = $0); close_parens = length(temp2)
+              temp2 = $0
+              gsub(/[^)]/, "", temp2); close_parens = length(temp2)
               source_level += open_parens - close_parens
               
               # Check if this line contains a git URL
