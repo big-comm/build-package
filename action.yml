@@ -672,9 +672,13 @@ runs:
           # Function to modify git URLs in source array
           modify_git_source() {
             local branch="$1"
+            local current_repo_url="${{ inputs.url }}"
             local temp_file=$(mktemp)
             
-            awk -v branch="$branch" '
+            # Extract the repository identifier (owner/repo) from current URL
+            local current_repo=$(echo "$current_repo_url" | sed -E 's|.*/([^/]+/[^/]+)(\.git)?/?$|\1|')
+            
+            awk -v branch="$branch" -v current_repo="$current_repo" '
             BEGIN { in_source = 0; source_level = 0 }
             
             # Detect start of source array
@@ -696,13 +700,21 @@ runs:
               
               # Check if this line contains a git URL
               if ($0 ~ /git\+.*\.git/ && $0 ~ /"/) {
-                # Extract the git URL and modify it
-                if ($0 ~ /#branch=/ || $0 ~ /#tag=/) {
-                  # Already has branch/tag, replace it
-                  gsub(/#[^"]*/, "#branch=" branch, $0)
-                } else {
-                  # Add branch to git URL
-                  gsub(/\.git"/, ".git#branch=" branch "\"", $0)
+                # Extract repository identifier from this URL
+                url_repo = $0
+                gsub(/.*git\+[^\/]*\/\/[^\/]+\//, "", url_repo)
+                gsub(/\.git[^"]*".*/, "", url_repo)
+                
+                # Only modify if this URL points to the same repository
+                if (index(url_repo, current_repo) > 0) {
+                  # Extract the git URL and modify it
+                  if ($0 ~ /#branch=/ || $0 ~ /#tag=/) {
+                    # Already has branch/tag, replace it
+                    gsub(/#[^"]*/, "#branch=" branch, $0)
+                  } else {
+                    # Add branch to git URL
+                    gsub(/\.git"/, ".git#branch=" branch "\"", $0)
+                  }
                 }
               }
               
