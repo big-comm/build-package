@@ -681,19 +681,38 @@ runs:
               sed -i "s|\${pkgname}|$pkgname|g" PKGBUILD
               msg_info "Variables expanded successfully"
               
-              # Function to modify git URLs in our repositories only
+              # Function to modify git URLs in our repositories only (supports single and multi-line source arrays)
               awk -v branch="${{ inputs.new_branch }}" '
-              BEGIN { in_source = 0; source_level = 0 }
+              BEGIN { 
+                in_source = 0
+                source_level = 0 
+              }
               
-              # Detect start of source array
+              # Detect start of source array (single line or multi-line)
               /^[[:space:]]*source[[:space:]]*=/ {
                 in_source = 1
+                
+                # If it is a complete single line source=("..."), process immediately
+                if ($0 ~ /^[[:space:]]*source[[:space:]]*=.*\).*$/) {
+                  if ($0 ~ /git\+.*github\.com\/(biglinux|big-comm).*\.git/) {
+                    if ($0 ~ /#branch=/ || $0 ~ /#tag=/) {
+                      gsub(/#[^"]*/, "#branch=" branch, $0)
+                    } else {
+                      gsub(/\.git"/, ".git#branch=" branch "\"", $0)
+                    }
+                  }
+                  print $0
+                  in_source = 0
+                  next
+                }
+                
+                # If not a complete line, it is a multi-line array
                 print $0
                 if ($0 ~ /\($/) source_level = 1
                 next
               }
               
-              # Handle content inside source array
+              # Handle content inside source array (multi-line)
               in_source == 1 {
                 # Count parentheses to detect end of array
                 temp = $0
@@ -703,7 +722,7 @@ runs:
                 source_level += open_parens - close_parens
                 
                 # Check if this line contains our git URL
-                if ($0 ~ /git\+.*github\.com\/(biglinux|big-comm).*\.git/ && $0 ~ /"/) {
+                if ($0 ~ /git\+.*github\.com\/(biglinux|big-comm).*\.git/) {
                   # Modify our repository URLs
                   if ($0 ~ /#branch=/ || $0 ~ /#tag=/) {
                     # Already has branch/tag, replace it
