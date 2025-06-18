@@ -671,8 +671,15 @@ runs:
 
           if [ "${{ inputs.branch_type }}" == "testing" ]; then
             # Check if this is our repository (biglinux or big-comm)
-            if grep -q "github.com/biglinux\|github.com/big-comm" PKGBUILD; then
+            if grep -q "github.com/biglinux\|github.com/big-comm\|\${url}" PKGBUILD; then
               msg_info "Detected our repository - modifying to use branch: ${{ inputs.new_branch }}"
+              
+              # Expand variables in PKGBUILD before processing
+              msg_info "Expanding PKGBUILD variables before modification..."
+              source PKGBUILD
+              sed -i "s|\${url}|$url|g" PKGBUILD
+              sed -i "s|\${pkgname}|$pkgname|g" PKGBUILD
+              msg_info "Variables expanded successfully"
               
               # Function to modify git URLs in our repositories only
               awk -v branch="${{ inputs.new_branch }}" '
