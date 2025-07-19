@@ -630,15 +630,36 @@ runs:
           msg_info "TAG_NAME   : ${TAG_NAME}"
           msg_info "depends    : ${depends[@]}"
           msg_info "makedepends: ${makedepends[@]}"
+          msg_info "checkdepends: ${checkdepends[@]}"
 
           # Install all dependencies using yay
           install_dependencies() {
-            if [ -n "$depends" ] || [ -n "$makedepends" ]; then
-              msg_info "Installing all dependencies..."
-              yay -Sy --asdeps --needed --noanswerdiff --noconfirm "${depends[@]}" "${makedepends[@]}" || {
+            local all_deps=()
+            
+            # Add depends if exists
+            if [ -n "${depends[*]}" ]; then
+              all_deps+=("${depends[@]}")
+            fi
+            
+            # Add makedepends if exists
+            if [ -n "${makedepends[*]}" ]; then
+              all_deps+=("${makedepends[@]}")
+            fi
+            
+            # Add checkdepends if exists
+            if [ -n "${checkdepends[*]}" ]; then
+              all_deps+=("${checkdepends[@]}")
+              msg_info "Including checkdepends for testing support"
+            fi
+            
+            if [ ${#all_deps[@]} -gt 0 ]; then
+              msg_info "Installing all dependencies (${#all_deps[@]} packages)..."
+              yay -Sy --asdeps --needed --noanswerdiff --noconfirm "${all_deps[@]}" || {
                 msg_warning "Error installing dependencies"
                 return 1
               }
+            else
+              msg_info "No dependencies to install"
             fi
             return 0
           }
