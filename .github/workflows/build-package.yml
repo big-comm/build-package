@@ -68,7 +68,7 @@ jobs:
       issues: write
       pull-requests: write
     container:
-      image: talesam/community-build:1.7.2
+      image: talesam/community-build:1.7.3
       options: --privileged
     steps:
       - name: Capture workflow start time
