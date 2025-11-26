@@ -48,7 +48,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: talesam/community-build:1.7.4
+      image: talesam/community-build:1.7.5
       options: --privileged
 
     steps:
