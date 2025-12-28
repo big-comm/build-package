@@ -715,7 +715,7 @@ runs:
                 
                 # If it is a complete single line source=("..."), process immediately
                 if ($0 ~ /^[[:space:]]*source[[:space:]]*=.*\).*$/) {
-                  if ($0 ~ /git\+.*github\.com\/(biglinux|big-comm).*\.git/) {
+                  if ($0 ~ /git\+.*github\.com\/.*\.git/) {
                     if ($0 ~ /#branch=/ || $0 ~ /#tag=/) {
                       gsub(/#[^"]*/, "#branch=" branch, $0)
                     } else {
@@ -741,9 +741,9 @@ runs:
                 temp2 = $0
                 gsub(/[^)]/, "", temp2); close_parens = length(temp2)
                 source_level += open_parens - close_parens
-                
+
                 # Check if this line contains our git URL
-                if ($0 ~ /git\+.*github\.com\/(biglinux|big-comm).*\.git/) {
+                if ($0 ~ /git\+.*github\.com\/.*\.git/) {
                   # Modify our repository URLs
                   if ($0 ~ /#branch=/ || $0 ~ /#tag=/) {
                     # Already has branch/tag, replace it
