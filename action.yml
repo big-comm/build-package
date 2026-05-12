@@ -1268,6 +1268,24 @@ runs:
         prerelease: false
         fail_on_unmatched_files: false
 
+    # The action above publishes the release via the GitHub API, which does
+    # NOT trigger `push: tags` workflows in the destination repo. Packages
+    # that ship downstream artifacts (e.g. the Windows MSI for biglace) fire
+    # a repository_dispatch on the destination repo so its own workflow can
+    # pick up the tag and build. Non-consuming packages simply ignore the
+    # event, so this is safe to run for every release.
+    - name: Trigger downstream build (repository_dispatch)
+      if: inputs.branch_type != 'testing' && inputs.build_env != 'aur'
+      continue-on-error: true
+      shell: bash
+      run: |
+        curl -sS -X POST \
+          -H "Authorization: token ${{ inputs.github_token }}" \
+          -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/${{ env.repository }}/dispatches" \
+          -d "{\"event_type\":\"windows-msi-build\",\"client_payload\":{\"tag_name\":\"${{ env.PKG_TAG_NAME }}\"}}" \
+          || echo "downstream dispatch failed (non-fatal)"
+
     - name: Telegram Alert Fail
       if: failure()
       shell: bash
