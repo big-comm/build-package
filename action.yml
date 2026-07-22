@@ -519,6 +519,25 @@ runs:
         # This is the key fix - we explicitly set DIRNAME to be different from DIR
         msg_info "Executing translation script for package: $REPO_NAME"
         DIRNAME="$REPO_NAME" OPENAI_KEY=${{ inputs.openai_key }} gettext_po_generator_github.sh "."
+
+        # Keep the build usable when automated translation breaks gettext structure.
+        translation_valid=true
+        while IFS= read -r -d '' catalog; do
+          if [[ "$catalog" == *.pot ]]; then
+            msgfmt --check-format --output-file=/dev/null "$catalog" || translation_valid=false
+          else
+            msgfmt --check --output-file=/dev/null "$catalog" || translation_valid=false
+          fi
+        done < <(find locale -maxdepth 1 -type f \( -name '*.po' -o -name '*.pot' \) -print0)
+
+        if [[ "$translation_valid" != true ]]; then
+          msg_warning "Invalid automated translation detected; restoring previous catalogs"
+          git restore --worktree -- locale
+          if git ls-files --error-unmatch usr/share/locale >/dev/null 2>&1; then
+            git restore --worktree -- usr/share/locale
+          fi
+          git clean -fd -- locale usr/share/locale
+        fi
         
         # Return to the original directory
         cd $GITHUB_WORKSPACE
