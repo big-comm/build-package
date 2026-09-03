@@ -117,18 +117,19 @@ jobs:
             echo "community_branch=${{ github.event.client_payload.community_branch }}" >> $GITHUB_ENV
           fi
 
-      - name: Fetch all branches
-        run: |
-          git fetch --all
-          git fetch origin '+refs/heads/*:refs/remotes/origin/*'
-
-      - name: Checkout to specified branch or create if not exists
-        run: |
-          if git ls-remote --exit-code --heads origin ${{ env.NEW_BRANCH }}; then
-            git checkout ${{ env.NEW_BRANCH }}
-          else
-            git checkout -b ${{ env.NEW_BRANCH }}
-          fi
+      # NEW_BRANCH is a branch of the package being built, and this checkout
+      # used to apply it here, to the build tool itself. A tool has no
+      # per-user version: whenever a branch of the same name happened to exist
+      # in this repository, every build triggered from it ran a frozen copy of
+      # action.yml -- silently, and only for that user. dev-talesam sat one
+      # commit behind; dev sat fifty-nine. Where no such branch existed the
+      # step created one from main and the build was correct by accident,
+      # which is why this stayed invisible.
+      #
+      # The action now always runs from the default branch. The package's own
+      # branch is unaffected: the action clones the package repository into
+      # source_repo and checks out git_branch/new_branch there, from the
+      # parameters below.
 
       - name: Debug Environment Variables
         shell: bash
