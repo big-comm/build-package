@@ -721,10 +721,49 @@ runs:
               sed -i "s|\${url}|$url|g; s|\\\$url|$url|g" PKGBUILD
               sed -i "s|\${pkgname}|$pkgname|g; s|\\\$pkgname|$pkgname|g" PKGBUILD
               msg_info "Variables expanded successfully"
-              
+
+              # Which organization owns this package. dev-<user> is a
+              # convention of our own organizations, so the branch may only be
+              # applied to a source that lives in the same one.
+              #
+              # A PKGBUILD whose source is an upstream project -- copyous,
+              # pano, orchis-theme, kiwi-kemma -- has no such branch: the build
+              # either compiled whatever stale thing happened to carry that
+              # name, or died with "invalid reference: origin/<branch>". Neither
+              # is what a testing build of a packaging repository means, so
+              # those keep the revision their source already names.
+              #
+              # The organization, not the repository name: a renamed repository
+              # (comm-package-rebuild is packaged from comm-recreate-package)
+              # is still ours and still has the branch.
+              pkg_org=$(printf '%s' "${{ inputs.url }}" \
+                | sed -E 's#^git@([^:]+):#\1/#; s#^[a-z]+://##; s#/+$##; s#\.git$##' \
+                | cut -d/ -f2 | tr '[:upper:]' '[:lower:]')
+              msg_info "Package organization: $pkg_org"
+
               # Function to modify git URLs in our repositories only (supports single and multi-line source arrays)
-              awk -v branch="${{ inputs.new_branch }}" '
-              BEGIN { 
+              awk -v branch="${{ inputs.new_branch }}" -v pkg_org="$pkg_org" '
+              # Owner of the git+ URL on the line, lowercased -- empty when the
+              # line carries no git+ URL.
+              function source_org(line) {
+                if (!match(line, /git\+[a-zA-Z]+:\/\/[^"[:space:])]+/)) return ""
+                u = substr(line, RSTART, RLENGTH)
+                sub(/^git\+[a-zA-Z]+:\/\//, "", u)
+                sub(/^[^\/]+\//, "", u)
+                sub(/\/.*$/, "", u)
+                return tolower(u)
+              }
+
+              # Whether this source lives in the organization being built.
+              function ours(line) {
+                o = source_org(line)
+                if (o == "") return 0
+                if (o == pkg_org) return 1
+                print "    source belongs to " o ", not " pkg_org " -- keeping the revision it names" > "/dev/stderr"
+                return 0
+              }
+
+              BEGIN {
                 in_source = 0
                 source_level = 0 
               }
@@ -735,7 +774,7 @@ runs:
                 
                 # If it is a complete single line source=("..."), process immediately
                 if ($0 ~ /^[[:space:]]*source[[:space:]]*=.*\).*$/) {
-                  if ($0 ~ /git\+.*github\.com\/.*\.git/) {
+                  if ($0 ~ /git\+.*github\.com\/.*\.git/ && ours($0)) {
                     if ($0 ~ /#branch=/ || $0 ~ /#tag=/) {
                       gsub(/#[^"]*/, "#branch=" branch, $0)
                     } else {
@@ -763,7 +802,7 @@ runs:
                 source_level += open_parens - close_parens
 
                 # Check if this line contains our git URL
-                if ($0 ~ /git\+.*github\.com\/.*\.git/) {
+                if ($0 ~ /git\+.*github\.com\/.*\.git/ && ours($0)) {
                   # Modify our repository URLs
                   if ($0 ~ /#branch=/ || $0 ~ /#tag=/) {
                     # Already has branch/tag, replace it
