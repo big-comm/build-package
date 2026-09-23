@@ -155,6 +155,7 @@ jobs:
           branch_type: ${{ env.BRANCH_TYPE }}
           new_branch: ${{ env.NEW_BRANCH }}
           package_name: ${{ env.PACKAGE_NAME }}
+          pkgbuild_dir: ${{ github.event.client_payload.pkgbuild_dir }}
           url: ${{ env.url }}
           git_branch: ${{ env.git_branch }}
           manjaro_branch: ${{ env.manjaro_branch }}

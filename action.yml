@@ -102,6 +102,10 @@ inputs:
     description: "Directory containing the AUR package"
     required: false
     default: "."
+  pkgbuild_dir:
+    description: "Directory of the PKGBUILD to build, for repositories that carry more than one (empty: the repository's only PKGBUILD)"
+    required: false
+    default: ""
   start_time:
     description: "Workflow start time"
     required: false
@@ -588,6 +592,10 @@ runs:
 
     - name: Build package
       shell: bash
+      env:
+        # Passed through the environment rather than expanded into the
+        # script, since it arrives in the dispatch payload.
+        PKGBUILD_DIR: ${{ inputs.pkgbuild_dir }}
       run: |
         # Build package
         source /tmp/send_telegram_message.sh
@@ -693,8 +701,30 @@ runs:
           makepkg -s --noconfirm --noprogressbar --nodeps
         else
           # For non-AUR packages
-          gitfolder=$(find -type f -name PKGBUILD | sed 's/PKGBUILD//')
-          cd $gitfolder
+          # A package repository normally carries exactly one PKGBUILD. One
+          # that carries several (a kernel and its LTS, say) names the one to
+          # build through pkgbuild_dir; without it there is no right answer,
+          # so stop instead of guessing.
+          if [[ -n "$PKGBUILD_DIR" ]]; then
+            # Relative to the package repository, which the previous step
+            # cloned into source_repo.
+            repo_root=$(realpath "$GITHUB_WORKSPACE/source_repo")
+            gitfolder=$(realpath -m -- "$repo_root/$PKGBUILD_DIR")
+            case "$gitfolder/" in
+              "$repo_root"/*) ;;
+              *) die "pkgbuild_dir must be inside the repository: $PKGBUILD_DIR" ;;
+            esac
+            [[ -f "$gitfolder/PKGBUILD" ]] || die "No PKGBUILD in pkgbuild_dir: $PKGBUILD_DIR"
+          else
+            mapfile -t pkgbuilds < <(find . -type f -name PKGBUILD -not -path './.git/*')
+            case ${#pkgbuilds[@]} in
+              0) die "No PKGBUILD found in the repository" ;;
+              1) gitfolder=$(dirname -- "${pkgbuilds[0]}") ;;
+              *) die "Several PKGBUILDs found (${pkgbuilds[*]}); set pkgbuild_dir in the dispatch payload to choose one" ;;
+            esac
+          fi
+          msg_info "PKGBUILD directory: $gitfolder"
+          cd "$gitfolder"
           source PKGBUILD
           TAG_NAME="$pkgver-$pkgrel"
           echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
