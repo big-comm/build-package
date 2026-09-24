@@ -878,7 +878,13 @@ runs:
             pkgname="${{ inputs.package_name }}"
             full_pkgname="$(find . -type f -iname "$pkgname*.pkg.tar.zst" -print)"
             msg_raw "full_pkgname : $full_pkgname"
-            echo "full_pkgname=$full_pkgname" >> $GITHUB_ENV
+            # A split package (a kernel and its headers) builds several
+            # files, one per line; a plain name=value line only holds one.
+            {
+              echo "full_pkgname<<FULL_PKGNAME_EOF"
+              printf '%s\n' "$full_pkgname"
+              echo "FULL_PKGNAME_EOF"
+            } >> "$GITHUB_ENV"
             msg_run "cp -f $full_pkgname /home/packages/ 2>/dev/null" || msg_warning 'No package found to move'
             msg_ok "Build completed. Checking /home/packages:"
             msg_run 'ls -la /home/packages'
