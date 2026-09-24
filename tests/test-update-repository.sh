@@ -113,7 +113,25 @@ for pid in "${pids[@]}"; do wait "$pid" || status=1; done
 check "fifteen parallel updates succeed" "0" "$status"
 check "and the database has all sixteen packages" "16" "$(database "$repo" | wc -l)"
 
-# 6. The database is readable by pacman.
+# 6. A file renamed on the way, an epoch's ":" turned into ".", as the
+#    repository already holds: name and version come from inside it.
+repo=$work/epoch
+mkdir -p "$repo"
+epoch=$(package "$repo" xfce4-dockbarx-plugin 1:0.7.2-1)
+mv "$repo/$epoch" "$repo/${epoch//:/.}"
+update "$repo" "${epoch//:/.}"
+check "a renamed epoch package is published" "0" "$?"
+check "under its real version" "xfce4-dockbarx-plugin-1:0.7.2-1" "$(database "$repo")"
+newer=$(package "$repo" xfce4-dockbarx-plugin 1:0.7.3-1)
+mv "$repo/$newer" "$repo/${newer//:/.}"
+update "$repo" "${newer//:/.}"
+check "and its update replaces it" "xfce4-dockbarx-plugin-1:0.7.3-1" "$(database "$repo")"
+epochless=$(package "$repo" xfce4-dockbarx-plugin 2.0-1)
+update "$repo" "$epochless"
+check "an epoch outranks a bigger version without one" "1" "$?"
+
+# 7. The database is readable by pacman.
+repo=$work/parallel
 check "pacman reads the database" "linux-big 7.2.7-2" \
   "$(tar -xOzf "$repo/community-testing.db.tar.gz" linux-big-7.2.7-2/desc | awk '/%NAME%/{getline; n=$0} /%VERSION%/{getline; print n, $0}')"
 check "the .db link points at the database" "community-testing.db.tar.gz" "$(readlink "$repo/community-testing.db")"

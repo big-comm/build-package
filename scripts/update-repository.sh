@@ -30,39 +30,35 @@ else
   echo "warning: flock is not installed; updating without a lock" >&2
 fi
 
-# name-pkgver-pkgrel-arch.pkg.tar.zst. pkgver, pkgrel and arch never contain
-# a hyphen, so the name is everything before the last three fields.
-# Cutting at the first "-<digit>" instead put linux-big-nvidia-580xx in the
-# same group as linux-big-nvidia, and one deleted the other.
-package_name() {
-  local stem=${1%.pkg.tar.*}
-  echo "${stem%-*-*-*}"
+# Name and version come from the package's own .PKGINFO, as repo-add reads
+# them, not from the file name: files get renamed (an epoch's ":" becomes
+# "."), and cutting the name at the first "-<digit>" once put
+# linux-big-nvidia-580xx in the same group as linux-big-nvidia, and one
+# deleted the other.
+declare -A pkg_name=() pkg_version=()
+read_pkginfo() {
+  local info
+  info=$(bsdtar -xOqf "$1" .PKGINFO) || { echo "error: $1 is not a readable package" >&2; return 1; }
+  pkg_name[$1]=$(sed -n 's/^pkgname = //p' <<< "$info")
+  pkg_version[$1]=$(sed -n 's/^pkgver = //p' <<< "$info")
+  [[ -n ${pkg_name[$1]} && -n ${pkg_version[$1]} ]] || { echo "error: $1 has no pkgname or pkgver" >&2; return 1; }
 }
 
-package_version() {
-  local stem=${1%.pkg.tar.*}
-  stem=${stem%-*}
-  echo "${stem#"$(package_name "$1")"-}"
-}
-
-# One listing, used throughout. Other builds keep uploading while this one
-# runs; a package that lands later is handled by its own build, which is
-# waiting for the lock. (rsync writes to a temporary name and renames, so a
-# half-uploaded package never matches.)
 shopt -s nullglob
 listing=(*.pkg.tar.zst)
 declare -A newest=()
 for file in "${listing[@]}"; do
-  name=$(package_name "$file")
+  read_pkginfo "$file"
+  name=${pkg_name[$file]}
   if [[ -z ${newest[$name]:-} ]] ||
-    (($(vercmp "$(package_version "$file")" "$(package_version "${newest[$name]}")") > 0)); then
+    (($(vercmp "${pkg_version[$file]}" "${pkg_version[${newest[$name]}]}") > 0)); then
     newest[$name]=$file
   fi
 done
 
 packages=()
 for file in "${listing[@]}"; do
-  name=$(package_name "$file")
+  name=${pkg_name[$file]}
   if [[ $file == "${newest[$name]}" ]]; then
     packages+=("$file")
   else
@@ -94,11 +90,16 @@ listed=$(bsdtar -tf "$db_name.db.tar.gz")
 failed=0
 for file in "${uploaded[@]}"; do
   file=${file##*/}
-  entry="$(package_name "$file")-$(package_version "$file")/"
-  if grep -qxF -- "$entry" <<< "$listed"; then
+  if [[ -z ${pkg_name[$file]:-} ]]; then
+    echo "error: $file was not found in the repository" >&2
+    failed=1
+    continue
+  fi
+  name=${pkg_name[$file]}
+  if grep -qxF -- "$name-${pkg_version[$file]}/" <<< "$listed"; then
     echo "Published: $file"
-  elif [[ ! -f $file ]]; then
-    echo "error: $file is not in the repository: a newer version is, ${newest[$(package_name "$file")]:-none}" >&2
+  elif [[ ${newest[$name]} != "$file" ]]; then
+    echo "error: $file is not in the repository: a newer version is, ${newest[$name]}" >&2
     failed=1
   else
     echo "error: $file is in the repository but not in $db_name" >&2
