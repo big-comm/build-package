@@ -169,8 +169,8 @@ jobs:
           telegram_token: ${{ secrets.TOKEN_BOT }}
           telegram_chat_id: ${{ secrets.CHAT_ID }}
           
-          # Add configuration for translation
-          translate: 'true'
+          # Translations are maintained in each repository; the build no longer rewrites them
+          translate: 'false'
           openai_key: ${{ secrets.OPENAI_KEY }}
 
           repo_host: ${{ secrets.PKGBUILD_HOST }}
