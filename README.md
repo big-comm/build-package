@@ -66,8 +66,35 @@ Key features:
 - Publishing to GitHub releases
 - Pushing to custom package repositories
 - Updating repository databases
-- Cleaning old packages
+- Cleaning old packages (see below)
 - Visual progress tracking with step numbering (steps 1/4 through 4/4)
+
+### Publishing to the repository
+
+After uploading, the action runs [`scripts/update-repository.sh`](scripts/update-repository.sh)
+on the repository server. It:
+
+- keeps only the newest version of each package, compared with `vercmp`, as
+  pacman compares them. The package name is everything before the last three
+  fields of the file name (pkgver, pkgrel and arch never contain a hyphen), so
+  `linux-big-nvidia` and `linux-big-nvidia-580xx` stay two packages;
+- rebuilds the database aside and moves it into place, so pacman never
+  downloads a missing or half-written one;
+- takes a lock (`flock`), so builds finishing together update the database
+  one at a time instead of overwriting each other;
+- fails the build when a package it uploaded is not in the database — for
+  example because the repository already has a newer version. Publish a
+  rollback with a higher `pkgrel` or an `epoch`.
+
+The server needs `bash`, `pacman` (for `repo-add`, `vercmp` and `bsdtar`) and
+`flock`. Every connection to it is retried, so a server refusing connections
+under load delays a build instead of losing it.
+
+Test it locally, on real packages and the real `repo-add`:
+
+```bash
+tests/test-update-repository.sh
+```
 
 ## Usage
 

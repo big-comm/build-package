@@ -206,6 +206,24 @@ runs:
         }
         export -f msg_run
 
+        # retry <attempts> <command...>: run until it succeeds, waiting 15s,
+        # 30s, 45s... between attempts. Many builds finishing together hit the
+        # repository server at once, and sshd refuses connections beyond its
+        # MaxStartups; one refused connection must not lose a finished build.
+        retry() {
+          local attempts=$1 n=1
+          shift
+          until "$@"; do
+            if (( n >= attempts )); then
+              return 1
+            fi
+            msg_warning "Attempt $n of $attempts failed, retrying in $(( n * 15 ))s: $*"
+            sleep $(( n * 15 ))
+            n=$(( n + 1 ))
+          done
+        }
+        export -f retry
+
         msg_info() {
           local msg="$1"
           msg="$(sed 's/<[^>]*>//g' <<< "$msg")" # Remove HTML tags
@@ -966,7 +984,15 @@ runs:
         replicate '#'
         # Setup SSH
         msg_run 'mkdir -p /home/builduser/.ssh'
-        msg_run "ssh-keyscan -t rsa -p ${{ inputs.repo_port }} ${{ inputs.repo_host }} >> /home/builduser/.ssh/known_hosts"
+        # ssh-keyscan can print nothing and still exit 0; an empty answer is a
+        # failed attempt too.
+        keyscan() {
+          local keys
+          keys=$(ssh-keyscan -t rsa -p "${{ inputs.repo_port }}" "${{ inputs.repo_host }}" 2>/dev/null) && [[ -n $keys ]] &&
+            printf '%s\n' "$keys" >> /home/builduser/.ssh/known_hosts
+        }
+        msg_info "ssh-keyscan -t rsa -p *** *** >> /home/builduser/.ssh/known_hosts"
+        retry 5 keyscan || die "Could not reach the repository server"
         ip="${{ inputs.repo_host }}"
 
         if [[ "${{ inputs.build_env }}" == "aur" ]]; then
@@ -1043,7 +1069,7 @@ runs:
             rsync_cmd="rsync -s --itemize-changes -apz -e \"ssh -p ${{ inputs.repo_port }}\" ./$i ${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/${branch,,}/x86_64/"
             msg_raw "rsync command: $rsync_cmd"
 
-            if rsync -s --itemize-changes -v -apz -e "ssh -p ${{ inputs.repo_port }}" "./$i" "${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/${branch,,}/x86_64/" 2>&1; then
+            if retry 5 rsync -s --itemize-changes -v -apz -e "ssh -p ${{ inputs.repo_port }}" "./$i" "${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/${branch,,}/x86_64/" 2>&1; then
                 message="✅ <b>[step 2.1/4] build-package - PACKAGE SENT SUCCESSFULLY</b>
                 <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
                 <b>Workflow:</b> <code>build-package/action.yml</code>
@@ -1057,6 +1083,7 @@ runs:
                 <b>Package:</b> <code>${pkgname_escaped}</code>
                 <b>Branch:</b> <code>${branch_escaped}</code>"
                 send_telegram_message "$message"
+                die "Failed to send $i to the repository"
             fi
         done
 
@@ -1069,7 +1096,8 @@ runs:
             [[ ! -f "$i" ]] && continue  # Skip if file doesn't exist
             msg_raw "Processing file: $i"
             msg_raw "Sending file: $i"
-            rsync -s --itemize-changes -v -apz -e "ssh -p ${{ inputs.repo_port }}" "./$i" "${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/${branch,,}/x86_64/" 2>&1
+            retry 5 rsync -s --itemize-changes -v -apz -e "ssh -p ${{ inputs.repo_port }}" "./$i" "${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/${branch,,}/x86_64/" 2>&1 ||
+                die "Failed to send $i to the repository"
         done
         replicate '#'
 
@@ -1107,118 +1135,46 @@ runs:
         <b>branch:</b> <code>${branch_escaped}</code>"
         send_telegram_message "$message"
 
-        # Generate unique marker for heredoc to prevent variable expansion conflicts
-        MARKER="EOF_${RANDOM}_${RANDOM}"
+        if [[ "${{ inputs.branch_type }}" == "aur" ]]; then
+          target_dir="${{ inputs.repo_dir }}/extra/x86_64"
+        else
+          target_dir="${{ inputs.repo_dir }}/${{ inputs.branch_type }}/x86_64"
+        fi
+        uploaded=()
+        for file in /home/packages/*.pkg.tar.zst; do
+          [[ -f $file ]] && uploaded+=("${file##*/}")
+        done
 
-        # Prepare variables for SSH command
-        branch_type="${{ inputs.branch_type }}"
-        repo_dir="${{ inputs.repo_dir }}"
-        
-        # Execute SSH command with heredoc
-        ssh "${{ inputs.repo_user }}@${{ inputs.repo_host }}" -p "${{ inputs.repo_port }}" "bash -s" << EOF
-          # Determine correct directory based on branch_type
-          if [[ "$branch_type" == "aur" ]]; then
-            target_dir="$repo_dir/extra/x86_64"
-          else
-            target_dir="$repo_dir/$branch_type/x86_64"
-          fi
-          
-          mkdir -p "\${target_dir}"
-          cd "\${target_dir}" || exit 1
+        # scripts/update-repository.sh runs on the server: it keeps the newest
+        # version of each package, rebuilds the database, and fails when a
+        # package this build uploaded is not in it. It is tested by
+        # tests/test-update-repository.sh.
+        remote_command="bash -s --$(printf ' %q' "$target_dir" "$db_name" "${uploaded[@]}")"
+        update_status=0
+        update_repository() {
+          ssh -p "${{ inputs.repo_port }}" "${{ inputs.repo_user }}@${{ inputs.repo_host }}" "$remote_command" \
+            < "${GITHUB_ACTION_PATH:-$GITHUB_WORKSPACE}/scripts/update-repository.sh"
+          update_status=$?
+          # 255 is ssh failing to connect: worth another attempt. Anything
+          # else is the script's answer, and running it again changes nothing.
+          (( update_status != 255 ))
+        }
+        retry 5 update_repository || true
 
-          echo "Current path: \$(pwd)"
-          ls -lah
-
-          # Simple function to extract package base name
-          extract_pkgbase() {
-            echo "\${1%%-[0-9]*}"
-          }
-          
-          # Process packages by grouping them by base name and keeping only newest version
-          echo "Processing old packages..."
-          
-          # Get list of all package files
-          pkg_files=(\$(ls *.pkg.tar.zst 2>/dev/null || echo ""))
-          
-          # Group packages by base name
-          declare -A pkg_groups
-          for pkg in "\${pkg_files[@]}"; do
-            [ -z "\$pkg" ] && continue
-            base=\$(extract_pkgbase "\$pkg")
-            pkg_groups["\$base"]="\${pkg_groups["\$base"]} \$pkg"
-          done
-          
-          # For each group, keep only the newest package
-          for base in "\${!pkg_groups[@]}"; do
-            echo "Package group: \$base"
-            files=(\${pkg_groups["\$base"]})
-            
-            # Find newest by creation time (simpler but reliable approach)
-            newest=""
-            for file in "\${files[@]}"; do
-              if [ -z "\$newest" ] || [ "\$file" -nt "\$newest" ]; then
-                newest="\$file"
-              fi
-            done
-            
-            echo "  Keeping newest: \$newest"
-            
-            # Remove all except newest
-            for file in "\${files[@]}"; do
-              if [ "\$file" != "\$newest" ]; then
-                echo "  Removing: \$file"
-                rm -f "\$file" "\$file.sig" "\$file.md5"
-              fi
-            done
-          done
-
-          # Remove and recreate database
-          echo "Updating database..."
-          rm -f "${db_name}.db.tar.gz" "${db_name}.files.tar.gz"
-
-          # Check if packages exist before recreating the database
-          if ls *.pkg.tar.zst >/dev/null 2>&1; then
-            echo "Recreating database with existing packages..."
-            
-            # Create database with packages
-            repo-add "${db_name}.db.tar.gz" *.pkg.tar.zst
-            echo "Database recreated successfully"
-          else
-            echo "No packages found to add to the database"
-          fi
-
-          # Clean orphaned files
-          echo "Looking for orphaned files..."
-          find . -maxdepth 1 -type f \( -name "*.sig" -o -name "*.md5" \) | while read -r file; do
-            base_name="\${file%.*}"
-            if [ ! -f "\${base_name}" ]; then
-              echo "Removing orphaned file: \${file}"
-              rm -f "\${file}"
-            fi
-          done
-
-          # Show final result
-          echo "Final directory contents:"
-          ls -la
-          
-          exit 0
-        EOF
-        retval="$?"
-
-        if [[ $retval -eq 0 ]]; then
-          msg_ok "Cleanup completed with exit code: $retval"
+        if (( update_status == 0 )); then
+          msg_ok "Repository updated"
           message="🧹 <b>[step 3.1/4] build-package - CLEANUP COMPLETED</b>
           ✅ <b>Cleanup completed successfully</b>
           <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
           <b>Workflow:</b> <code>build-package/action.yml</code>"
           send_telegram_message "$message"
         else
-          msg_warning "Cleanup completed with exit code: $retval"
           message="🧹 <b>[step 3.1/4] build-package - CLEANUP COMPLETED</b>
-          ❌ <b>Cleanup failed</b>
+          ❌ <b>The package is not published: the repository update failed</b>
           <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
           <b>Workflow:</b> <code>build-package/action.yml</code>"
           send_telegram_message "$message"
+          die "The repository update failed (exit code $update_status)"
         fi
         replicate '#'
 
