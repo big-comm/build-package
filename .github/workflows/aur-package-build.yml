@@ -41,6 +41,10 @@ on:
         description: 'Rebuild the same AUR version with this pkgrel (e.g. 4.1)'
         required: false
         type: string
+      aur_commit:
+        description: 'Build exactly this AUR commit (40-char hash)'
+        required: false
+        type: string
 
 env:
   PACKAGE_NAME: ${{ github.event.client_payload.package_name || inputs.package_name }}
@@ -96,6 +100,7 @@ jobs:
         aur_package_dir: './aur_package'
         url: ${{ env.AUR_URL }}
         aur_pkgrel: ${{ github.event.client_payload.pkgrel || inputs.pkgrel }}
+        aur_commit: ${{ github.event.client_payload.aur_commit || inputs.aur_commit }}
         
         tmate: ${{ github.event.client_payload.tmate || inputs.tmate || 'false' }}
         

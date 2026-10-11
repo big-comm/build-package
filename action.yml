@@ -39,6 +39,10 @@ inputs:
     description: "AUR only: pkgrel to build with (e.g. 4.1), to rebuild the same AUR version so pacman upgrades it"
     required: false
     default: ""
+  aur_commit:
+    description: "AUR only: build exactly this commit of the AUR repository (the one Repo Management reviewed)"
+    required: false
+    default: ""
   extra_package:
     description: "Extra package to build"
     required: false
@@ -436,6 +440,8 @@ runs:
 
     - name: Download Source code
       shell: bash
+      env:
+        AUR_COMMIT: ${{ inputs.aur_commit }}
       run: |
         # Download the source code
         source /tmp/send_telegram_message.sh
@@ -446,6 +452,16 @@ runs:
           # AUR package handling code - no changes needed
           msg_raw "Cloning AUR package from: ${{ inputs.url }}"
           msg_run "git clone ${{ inputs.url }} aur_package"
+
+          # Repo Management reviews the AUR changes before asking for a build
+          # and sends the commit it reviewed: build that one, not whatever was
+          # pushed to the AUR in the meantime.
+          if [[ -n "${AUR_COMMIT:-}" ]]; then
+            [[ $AUR_COMMIT =~ ^[0-9a-f]{40}$ ]] || die "Invalid aur_commit: $AUR_COMMIT"
+            git -C aur_package checkout --quiet --detach "$AUR_COMMIT" ||
+              die "The reviewed AUR commit $AUR_COMMIT is not in the AUR repository"
+            msg_raw "Building the reviewed AUR commit: $AUR_COMMIT"
+          fi
 
           if [[ -d "aur_package" ]]; then
             cd aur_package
