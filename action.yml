@@ -35,6 +35,10 @@ inputs:
   extra_command:
     description: "Extra command to run before building"
     required: false
+  aur_pkgrel:
+    description: "AUR only: pkgrel to build with (e.g. 4.1), to rebuild the same AUR version so pacman upgrades it"
+    required: false
+    default: ""
   extra_package:
     description: "Extra package to build"
     required: false
@@ -614,6 +618,7 @@ runs:
         # Passed through the environment rather than expanded into the
         # script, since it arrives in the dispatch payload.
         PKGBUILD_DIR: ${{ inputs.pkgbuild_dir }}
+        AUR_PKGREL: ${{ inputs.aur_pkgrel }}
       run: |
         # Build package
         source /tmp/send_telegram_message.sh
@@ -666,6 +671,16 @@ runs:
             else
               msg_info "No PGP keys defined in PKGBUILD"
             fi
+          fi
+
+          # Rebuild of the same AUR version (e.g. the Python moved to a new
+          # minor version): the panel asks for pkgrel 4.1, 4.2... so pacman
+          # sees a newer version and upgrades machines that have the old one.
+          if [[ -n "${AUR_PKGREL:-}" ]]; then
+            [[ $AUR_PKGREL =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "Invalid aur_pkgrel: $AUR_PKGREL"
+            grep -q '^pkgrel=' PKGBUILD || die "PKGBUILD has no pkgrel= line"
+            msg_raw "Rebuild: pkgrel $(sed -n 's/^pkgrel=//p' PKGBUILD) -> $AUR_PKGREL"
+            sed -i "s/^pkgrel=.*/pkgrel=$AUR_PKGREL/" PKGBUILD
           fi
 
           # Extract dependencies from PKGBUILD

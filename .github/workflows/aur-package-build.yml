@@ -37,6 +37,10 @@ on:
         description: 'Extra command to run before building'
         required: false
         type: string
+      pkgrel:
+        description: 'Rebuild the same AUR version with this pkgrel (e.g. 4.1)'
+        required: false
+        type: string
 
 env:
   PACKAGE_NAME: ${{ github.event.client_payload.package_name || inputs.package_name }}
@@ -91,6 +95,7 @@ jobs:
         package_name: ${{ env.PACKAGE_NAME }}
         aur_package_dir: './aur_package'
         url: ${{ env.AUR_URL }}
+        aur_pkgrel: ${{ github.event.client_payload.pkgrel || inputs.pkgrel }}
         
         tmate: ${{ github.event.client_payload.tmate || inputs.tmate || 'false' }}
         
