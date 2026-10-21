@@ -386,21 +386,27 @@ runs:
         msg_run 'cat /etc/pacman.conf'
         replicate '-'
 
-        msg_info "# Remove existing BigLinux repositories"
-        sudo sed -i '/biglinux/,$d' /etc/pacman.conf
+        msg_info "# Remove existing community and BigLinux repositories"
+        # From the first of them to the end: they are rewritten below, in order.
+        sudo sed -i '/^\[\(community\|biglinux\)-/,$d' /etc/pacman.conf
 
         msg_info "# Add repositories to build environment"
-        declare -A entries=(
-          [community-stable]='https://repo.communitybig.org/stable/$arch'
-          [community-testing]='https://repo.communitybig.org/testing/$arch'
-          [community-extra]='https://repo.communitybig.org/extra/$arch'
-          [biglinux-stable]='https://repo.biglinux.com.br/stable/$arch'
-          [biglinux-testing]='https://repo.biglinux.com.br/testing/$arch'
+        # In order: pacman takes a package from the first section that has it, so
+        # testing goes above stable. (An associative array has no order: bash
+        # returned the sections in any order, sometimes stable above testing.)
+        entries=(
+          "community-testing https://repo.communitybig.org/testing/\$arch"
+          "community-stable https://repo.communitybig.org/stable/\$arch"
+          "community-extra https://repo.communitybig.org/extra/\$arch"
+          "biglinux-testing https://packages.biglinux.com.br/testing/\$arch"
+          "biglinux-stable https://packages.biglinux.com.br/stable/\$arch"
+          "biglinux-extra https://packages.biglinux.com.br/extra/\$arch"
         )
 
-        for entry in "${!entries[@]}"; do
+        for item in "${entries[@]}"; do
+          entry=${item%% *}
           section='['"$entry"']'
-          server="${entries[$entry]}"
+          server=${item#* }
 
           if ! grep -qF "$section" /etc/pacman.conf; then
             echo -e "\n$section\nSigLevel = PackageRequired\nServer = $server" | \
