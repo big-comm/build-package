@@ -144,6 +144,8 @@ runs:
         TELEGRAM_TOKEN: "${{ inputs.telegram_token }}"
         TELEGRAM_CHAT_ID: "${{ inputs.telegram_chat_id }}"
       run: |
+        # A new build starts a new Telegram message (see send_telegram_message).
+        rm -f /tmp/telegram_message_id
         # Define send_telegram_message function in temporary script
         cat << 'EOF' > /tmp/send_telegram_message.sh
         export TERM=${TERM:-xterm}
@@ -254,21 +256,44 @@ runs:
         }
         export -f replicate
 
+        # One message per build: the first one is sent and every later step
+        # edits it, so the chat shows the build's current step instead of one
+        # message per step. Every step of this action runs on the same runner,
+        # so the message id is kept in a file. A message that cannot be edited
+        # is sent anew, and that one is edited from then on.
         send_telegram_message() {
           local message="$1"
           local parse_mode="$2"
+          local id_file=${TELEGRAM_MESSAGE_ID_FILE:-/tmp/telegram_message_id}
+          local api="https://api.telegram.org/bot${{ inputs.telegram_token }}"
+          local answer id
 
           # Set parse_mode as "HTML" if not specified
           [[ -z $parse_mode ]] && parse_mode="HTML"
 
           # Remove HTML tags and display result in terminal
           echo -e "${green}$(sed 's/<[^>]*>//g' <<< "$message")${reset}"
-          
+
+          id=$(cat "$id_file" 2>/dev/null || true)
+          if [[ $id =~ ^[0-9]+$ ]]; then
+            answer=$(curl -s -X POST "$api/editMessageText" \
+              -d chat_id="${{ inputs.telegram_chat_id }}" \
+              -d message_id="$id" \
+              --data-urlencode text="$message" \
+              -d parse_mode="$parse_mode")
+            # Same text as before is not an error: the message already shows it.
+            [[ $answer == *'"ok":true'* || $answer == *'message is not modified'* ]] && return 0
+          fi
+
           # Send original message with HTML to Telegram
-          curl -s -X POST "https://api.telegram.org/bot${{ inputs.telegram_token }}/sendMessage" \
+          answer=$(curl -s -X POST "$api/sendMessage" \
             -d chat_id="${{ inputs.telegram_chat_id }}" \
-            -d text="$message" \
-            -d parse_mode="$parse_mode"
+            --data-urlencode text="$message" \
+            -d parse_mode="$parse_mode")
+          echo "$answer"
+          id=$(sed -n 's/.*"message_id":\([0-9]*\).*/\1/p' <<< "$answer" | head -1)
+          [[ -n $id ]] && echo "$id" > "$id_file"
+          return 0
         }
         export -f send_telegram_message
         EOF

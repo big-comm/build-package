@@ -96,6 +96,14 @@ Test it locally, on real packages and the real `repo-add`:
 tests/test-update-repository.sh
 ```
 
+## Telegram
+
+Each build has one Telegram message: the first step sends it and every later
+step edits it, so the chat shows the build's current step instead of one
+message per step. A message that cannot be edited is sent anew, and that one
+is edited from then on. `tests/test-telegram.sh` checks it against a fake Bot
+API.
+
 ## Usage
 
 To use these workflows and the custom action in your repository:
