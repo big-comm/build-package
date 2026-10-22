@@ -1105,10 +1105,10 @@ runs:
 
             # Log rsync command to be executed
             msg_info "=== rsync command to be executed ==="
-            rsync_cmd="rsync -s --itemize-changes -apz -e \"ssh -p ${{ inputs.repo_port }}\" ./$i ${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/${branch,,}/x86_64/"
+            rsync_cmd="rsync -s --itemize-changes -apz -e \"ssh -p ${{ inputs.repo_port }}\" ./$i ${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/community-${branch,,}/x86_64/"
             msg_raw "rsync command: $rsync_cmd"
 
-            if retry 5 rsync -s --itemize-changes -v -apz -e "ssh -p ${{ inputs.repo_port }}" "./$i" "${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/${branch,,}/x86_64/" 2>&1; then
+            if retry 5 rsync -s --itemize-changes -v -apz -e "ssh -p ${{ inputs.repo_port }}" "./$i" "${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/community-${branch,,}/x86_64/" 2>&1; then
                 message="✅ <b>[step 2.1/4] build-package - PACKAGE SENT SUCCESSFULLY</b>
                 <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
                 <b>Workflow:</b> <code>build-package/action.yml</code>
@@ -1135,7 +1135,7 @@ runs:
             [[ ! -f "$i" ]] && continue  # Skip if file doesn't exist
             msg_raw "Processing file: $i"
             msg_raw "Sending file: $i"
-            retry 5 rsync -s --itemize-changes -v -apz -e "ssh -p ${{ inputs.repo_port }}" "./$i" "${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/${branch,,}/x86_64/" 2>&1 ||
+            retry 5 rsync -s --itemize-changes -v -apz -e "ssh -p ${{ inputs.repo_port }}" "./$i" "${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/community-${branch,,}/x86_64/" 2>&1 ||
                 die "Failed to send $i to the repository"
         done
         replicate '#'
@@ -1175,10 +1175,12 @@ runs:
         send_telegram_message "$message"
 
         if [[ "${{ inputs.branch_type }}" == "aur" ]]; then
-          target_dir="${{ inputs.repo_dir }}/extra/x86_64"
+          target_dir="${{ inputs.repo_dir }}/community-extra/x86_64"
         else
-          target_dir="${{ inputs.repo_dir }}/${{ inputs.branch_type }}/x86_64"
+          target_dir="${{ inputs.repo_dir }}/community-${{ inputs.branch_type }}/x86_64"
         fi
+        # Each repository lives at <repo_dir>/<section>/<arch>, the $repo/$arch
+        # path pacman.conf uses (community-stable/x86_64, ...).
         uploaded=()
         for file in /home/packages/*.pkg.tar.zst; do
           [[ -f $file ]] && uploaded+=("${file##*/}")
