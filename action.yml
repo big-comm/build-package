@@ -394,13 +394,15 @@ runs:
         # In order: pacman takes a package from the first section that has it, so
         # testing goes above stable. (An associative array has no order: bash
         # returned the sections in any order, sometimes stable above testing.)
+        # The same line for every section, the way Arch and Manjaro write theirs:
+        # pacman turns $repo into the section name (community-stable/x86_64, ...).
         entries=(
-          "community-testing https://repo.communitybig.org/testing/\$arch"
-          "community-stable https://repo.communitybig.org/stable/\$arch"
-          "community-extra https://repo.communitybig.org/extra/\$arch"
-          "biglinux-testing https://packages.biglinux.com.br/testing/\$arch"
-          "biglinux-stable https://packages.biglinux.com.br/stable/\$arch"
-          "biglinux-extra https://packages.biglinux.com.br/extra/\$arch"
+          "community-testing https://repo.communitybig.org/\$repo/\$arch"
+          "community-stable https://repo.communitybig.org/\$repo/\$arch"
+          "community-extra https://repo.communitybig.org/\$repo/\$arch"
+          "biglinux-testing https://packages.biglinux.com.br/\$repo/\$arch"
+          "biglinux-stable https://packages.biglinux.com.br/\$repo/\$arch"
+          "biglinux-extra https://packages.biglinux.com.br/\$repo/\$arch"
         )
 
         for item in "${entries[@]}"; do
