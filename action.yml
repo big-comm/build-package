@@ -296,6 +296,24 @@ runs:
           return 0
         }
         export -f send_telegram_message
+
+        # HTML for Telegram: escape text, and build links whose URL is escaped too.
+        tg_escape() {
+          local value=$1
+          value=${value//&/"&amp;"}
+          value=${value//</"&lt;"}
+          value=${value//>/"&gt;"}
+          printf '%s' "$value"
+        }
+        tg_link() {
+          local url
+          url=$(tg_escape "$1")
+          printf '<a href="%s">%s</a>' "${url//\"/"&quot;"}" "$(tg_escape "$2")"
+        }
+        tg_user() { tg_link "https://github.com/$1" "$1"; }
+        tg_job() { tg_link "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" "#${GITHUB_RUN_NUMBER}"; }
+        tg_workflow() { tg_link "https://github.com/${GITHUB_REPOSITORY}/blob/main/action.yml" "build-package/action.yml"; }
+        export -f tg_escape tg_link tg_user tg_job tg_workflow
         EOF
 
     - name: Get last commit hash from remote repository
@@ -319,6 +337,10 @@ runs:
 
     - name: Initialize package creation
       shell: bash
+      env:
+        # Passed as environment so a branch name or URL never becomes shell code.
+        INIT_NEW_BRANCH: ${{ inputs.new_branch }}
+        INIT_SOURCE_URL: ${{ inputs.url }}
       run: |
         # Initializing package creation
         source /tmp/send_telegram_message.sh
@@ -333,14 +355,29 @@ runs:
         pkgname_escaped="$pkgname"
         branch_escaped="${branch}"
 
+        # The last commit of the branch being built: dev-* for testing, else the default branch.
+        commit_ref="${INIT_NEW_BRANCH:-HEAD}"
+        commit_text=""
+        commit_hash=$(git ls-remote "$INIT_SOURCE_URL" "$commit_ref" 2>/dev/null | awk 'NR == 1 {print $1}')
+        if [[ $commit_hash =~ ^[0-9a-f]{40}$ ]]; then
+          commit_dir=$(mktemp -d)
+          if git -C "$commit_dir" init -q && git -C "$commit_dir" fetch -q --depth=1 "$INIT_SOURCE_URL" "$commit_hash" 2>/dev/null; then
+            commit_text=$(git -C "$commit_dir" log -1 --format=%B FETCH_HEAD | sed '/^$/d' | head -5)
+          fi
+          rm -rf "$commit_dir"
+        fi
+        branch_label="$branch"
+        [[ -n $INIT_NEW_BRANCH ]] && branch_label="$branch ($INIT_NEW_BRANCH)"
+        source_label="${INIT_SOURCE_URL#https://github.com/}"
+
         message="🏁 <b>[step 1/4] build-package - STARTING PACKAGE CREATION</b>
-        <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
-        <b>Workflow:</b> <code>build-package/action.yml</code>
-        <b>Name:</b> <code>${pkgname_escaped}</code>
-        <b>Commit:</b> <code>${COMMIT_MESSAGE}</code>
-        <b>Source:</b> <code>${repo_origem}</code>
-        <b>Started/Triggered by:</b> <code>${started_by_user}/${triggered_by_user}</code>
-        <b>Branch:</b> <code>${branch_escaped}</code>"
+        <b>Job:</b> $(tg_job)
+        <b>Workflow:</b> $(tg_workflow)
+        <b>Name:</b> $(tg_escape "$pkgname")
+        <b>Commit:</b> $(tg_escape "${commit_text:-unavailable}")
+        <b>Source:</b> $(tg_link "$INIT_SOURCE_URL" "${source_label%.git}")
+        <b>Started/Triggered by:</b> $(tg_user "$started_by_user")/$(tg_user "$triggered_by_user")
+        <b>Branch:</b> $(tg_escape "$branch_label")"
         msg_info "$message"
         send_telegram_message "$message"
         replicate '='
@@ -1119,12 +1156,12 @@ runs:
             file_size_mb=$((file_size_kb / 1024))
 
             message="✅ <b>[step 2/4] build-package - SENDING 📦 TO REPOSITORY</b>
-            <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
-            <b>Workflow:</b> <code>build-package/action.yml</code>
-            <b>Package:</b> <code>${branch_escaped,,}/${pkgname_escaped}</code>
+            <b>Job:</b> $(tg_job)
+            <b>Workflow:</b> $(tg_workflow)
+            <b>Package:</b> ${branch_escaped,,}/${pkgname_escaped}
             <b>Size b/Kb/Mb:</b> <code>${file_size_bytes}/${file_size_kb}/${file_size_mb}</code>
-            <b>Repository:</b> <code>${repo_path}</code>
-            <b>Branch:</b> <code>${branch_escaped}</code>"
+            <b>Repository:</b> ${repo_path}
+            <b>Branch:</b> ${branch_escaped}"
             msg_ok "$message"
             send_telegram_message "$message"
 
@@ -1135,17 +1172,17 @@ runs:
 
             if retry 5 rsync -s --itemize-changes -v -apz -e "ssh -p ${{ inputs.repo_port }}" "./$i" "${{ inputs.repo_user }}@$ip:${{ inputs.repo_dir }}/community-${branch,,}/x86_64/" 2>&1; then
                 message="✅ <b>[step 2.1/4] build-package - PACKAGE SENT SUCCESSFULLY</b>
-                <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
-                <b>Workflow:</b> <code>build-package/action.yml</code>
-                <b>Package:</b> <code>${pkgname_escaped}</code>
-                <b>Branch:</b> <code>${branch_escaped}</code>"
+                <b>Job:</b> $(tg_job)
+                <b>Workflow:</b> $(tg_workflow)
+                <b>Package:</b> ${pkgname_escaped}
+                <b>Branch:</b> ${branch_escaped}"
                 # Message sending is commented to avoid too many notifications
             else
                 message="❌ <b>[step 2/4] build-package - FAILED TO SEND PACKAGE</b>
-                <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
-                <b>Workflow:</b> <code>build-package/action.yml</code>
-                <b>Package:</b> <code>${pkgname_escaped}</code>
-                <b>Branch:</b> <code>${branch_escaped}</code>"
+                <b>Job:</b> $(tg_job)
+                <b>Workflow:</b> $(tg_workflow)
+                <b>Package:</b> ${pkgname_escaped}
+                <b>Branch:</b> ${branch_escaped}"
                 send_telegram_message "$message"
                 die "Failed to send $i to the repository"
             fi
@@ -1196,7 +1233,7 @@ runs:
         branch_escaped=$(echo "$branch" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
 
         message="🧹<b>[step 3/4] build-package - STARTING CLEANUP OF OLD PACKAGES</b>
-        <b>branch:</b> <code>${branch_escaped}</code>"
+        <b>branch:</b> ${branch_escaped}"
         send_telegram_message "$message"
 
         if [[ "${{ inputs.branch_type }}" == "aur" ]]; then
@@ -1231,14 +1268,14 @@ runs:
           msg_ok "Repository updated"
           message="🧹 <b>[step 3.1/4] build-package - CLEANUP COMPLETED</b>
           ✅ <b>Cleanup completed successfully</b>
-          <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
-          <b>Workflow:</b> <code>build-package/action.yml</code>"
+          <b>Job:</b> $(tg_job)
+          <b>Workflow:</b> $(tg_workflow)"
           send_telegram_message "$message"
         else
           message="🧹 <b>[step 3.1/4] build-package - CLEANUP COMPLETED</b>
           ❌ <b>The package is not published: the repository update failed</b>
-          <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
-          <b>Workflow:</b> <code>build-package/action.yml</code>"
+          <b>Job:</b> $(tg_job)
+          <b>Workflow:</b> $(tg_workflow)"
           send_telegram_message "$message"
           die "The repository update failed (exit code $update_status)"
         fi
@@ -1276,9 +1313,9 @@ runs:
         pushd /home/packages || true
         # Prepare message
         message="🕒 <b>[step 3.2/4] build-package - PREPARE PACKAGE FOR RELEASE (7z)</b>
-        <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
-        <b>Workflow:</b> <code>build-package/action.yml</code>
-        <b>Package:</b> <code>${{ env.PKGNAME_BRANCH }}/${{ env.PKGNAME_BASENAME }}</code>
+        <b>Job:</b> $(tg_job)
+        <b>Workflow:</b> $(tg_workflow)
+        <b>Package:</b> ${{ env.PKGNAME_BRANCH }}/${{ env.PKGNAME_BASENAME }}
         <b>Start:</b> <code>${START_TIME}</code>"
         send_telegram_message "$message"
         msg_info "$message"
@@ -1422,9 +1459,9 @@ runs:
         fi
         alert_branch=$(printf '%s' "$alert_branch" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
         message="🚨 <b>FAILED to create package:</b>
-        <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
-        <b>Package:</b> <code>${{ github.event.action }}</code>
-        <b>Branch:</b> <code>${alert_branch}</code>
+        <b>Job:</b> $(tg_job)
+        <b>Package:</b> ${{ github.event.action }}
+        <b>Branch:</b> ${alert_branch}
         <b>Error URL:</b> <a href='https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}'>${link_action}</a>"
         msg_warning "$message"
         send_telegram_message "$message"
@@ -1447,9 +1484,9 @@ runs:
         seconds=$((duration % 60))
 
         message="🏆 <b>[step 4/4] build-package - FINISHED AT 🕒:</b> <code>${hours}h ${minutes}m ${seconds}s</code>
-        <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
-        <b>Workflow:</b> <code>build-package/action.yml</code>
-        <b>Package:</b> <code>${{ env.PKGNAME_BRANCH }}/${{ env.PKGNAME_BASENAME }}</code>
+        <b>Job:</b> $(tg_job)
+        <b>Workflow:</b> $(tg_workflow)
+        <b>Package:</b> ${{ env.PKGNAME_BRANCH }}/${{ env.PKGNAME_BASENAME }}
         <b>Start:</b> <code>${START_TIME}</code>
         <b>End:</b> <code>${END_TIME}</code>
         <b>Duration:</b> <code>${hours}h ${minutes}m ${seconds}s</code>"
