@@ -280,6 +280,8 @@ runs:
               -d chat_id="${{ inputs.telegram_chat_id }}" \
               -d message_id="$id" \
               --data-urlencode text="$message" \
+              --data-urlencode 'link_preview_options={"is_disabled":true}' \
+              -d disable_web_page_preview=true \
               -d parse_mode="$parse_mode")
             # Same text as before is not an error: the message already shows it.
             [[ $answer == *'"ok":true'* || $answer == *'message is not modified'* ]] && return 0
@@ -289,6 +291,8 @@ runs:
           answer=$(curl -s -X POST "$api/sendMessage" \
             -d chat_id="${{ inputs.telegram_chat_id }}" \
             --data-urlencode text="$message" \
+            --data-urlencode 'link_preview_options={"is_disabled":true}' \
+            -d disable_web_page_preview=true \
             -d parse_mode="$parse_mode")
           echo "$answer"
           id=$(sed -n 's/.*"message_id":\([0-9]*\).*/\1/p' <<< "$answer" | head -1)
@@ -368,15 +372,14 @@ runs:
         fi
         branch_label="$branch"
         [[ -n $INIT_NEW_BRANCH ]] && branch_label="$branch ($INIT_NEW_BRANCH)"
-        source_label="${INIT_SOURCE_URL#https://github.com/}"
 
         message="🏁 <b>[step 1/4] build-package - STARTING PACKAGE CREATION</b>
         <b>Job:</b> $(tg_job)
         <b>Workflow:</b> $(tg_workflow)
         <b>Name:</b> $(tg_escape "$pkgname")
-        <b>Commit:</b> $(tg_escape "${commit_text:-unavailable}")
-        <b>Source:</b> $(tg_link "$INIT_SOURCE_URL" "${source_label%.git}")
-        <b>Started/Triggered by:</b> $(tg_user "$started_by_user")/$(tg_user "$triggered_by_user")
+        <b>Commit:</b> <i>$(tg_escape "${commit_text:-unavailable}")</i>
+        <b>Source:</b> <code>$(tg_escape "$INIT_SOURCE_URL")</code>
+        <b>Started/Triggered by:</b> <code>$(tg_escape "$started_by_user/$triggered_by_user")</code>
         <b>Branch:</b> $(tg_escape "$branch_label")"
         msg_info "$message"
         send_telegram_message "$message"
