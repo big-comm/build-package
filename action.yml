@@ -1405,15 +1405,26 @@ runs:
     - name: Telegram Alert Fail
       if: failure()
       shell: bash
+      env:
+        # The build's own branch, not github.ref_name (the branch of this
+        # build-package repository, always main). Passed as environment so a
+        # branch name never becomes shell code.
+        ALERT_BRANCH_TYPE: ${{ inputs.branch_type }}
+        ALERT_NEW_BRANCH: ${{ inputs.new_branch }}
       run: |
         # Send a Telegram alert if the build fails
         source /tmp/send_telegram_message.sh
         replicate '#'
         link_action=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        alert_branch="$ALERT_BRANCH_TYPE"
+        if [ -n "$ALERT_NEW_BRANCH" ]; then
+          alert_branch="$alert_branch ($ALERT_NEW_BRANCH)"
+        fi
+        alert_branch=$(printf '%s' "$alert_branch" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
         message="🚨 <b>FAILED to create package:</b>
         <b>Job:</b> <code>#${GITHUB_RUN_NUMBER}</code>
         <b>Package:</b> <code>${{ github.event.action }}</code>
-        <b>Branch:</b> <code>${{ github.ref_name }}</code>
+        <b>Branch:</b> <code>${alert_branch}</code>
         <b>Error URL:</b> <a href='https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}'>${link_action}</a>"
         msg_warning "$message"
         send_telegram_message "$message"
