@@ -65,5 +65,29 @@ check 'the new id replaces the old one' '42' "$(cat "$work/id")"
 run 7 '{"ok":false,"description":"Bad Request: message is not modified"}'
 check 'the same text again is not a new message' 'editMessageText editMessageText' "$(paste -sd' ' "$work/calls")"
 
+# The text sent: a message written inside an indented block loses that indentation.
+cat > "$work/bin/curl" <<'FAKE'
+#!/usr/bin/env bash
+for arg; do [[ $arg == text=* ]] && printf '%s' "${arg#text=}" > "$TEXT"; done
+echo '{"ok":true,"result":{"message_id":1}}'
+FAKE
+rm -f "$work/id"
+PATH="$work/bin:$PATH" TEXT="$work/text" TELEGRAM_MESSAGE_ID_FILE="$work/id" bash -c \
+    'source "$1"; send_telegram_message "<b>title</b>
+            <b>line</b>" >/dev/null 2>&1' _ "$work/telegram.sh"
+check 'the indentation of the block is not sent' $'<b>title</b>\n<b>line</b>' "$(cat "$work/text")"
+
+helper() {  # helper CODE -> output of CODE with the helpers defined
+    GITHUB_TRIGGERING_ACTOR='a<b' GITHUB_ACTOR=other bash -c 'source "$1"; eval "$2"' _ "$work/telegram.sh" "$1"
+}
+# shellcheck disable=SC2016  # expanded by the helper's shell
+check 'sizes read as a person would' '900 B|1.2 MB|3.0 GB' \
+    "$(helper 'printf "%s|%s|%s" "$(tg_size 900)" "$(tg_size 1258291)" "$(tg_size 3221225472)"')"
+# shellcheck disable=SC2016  # expanded by the helper's shell
+check 'each branch has its icon' '🧪✅🧩🚀🐧❔' \
+    "$(helper 'for b in testing Stable extra priority aur other; do tg_branch_icon "$b"; done')"
+check 'the branch line names the source branch' '🧪 <b>Branch:</b> testing (dev-x)' "$(helper 'tg_branch testing dev-x')"
+check 'who triggered the build, escaped' '👤 <b>Built by:</b> <code>a&lt;b</code>' "$(helper "tg_actor 'Built by'")"
+
 ((fail == 0)) && echo && echo 'all passed'
 exit "$fail"
