@@ -133,6 +133,10 @@ inputs:
   openai_key:
     description: "OpenAI API key for translation"
     required: false
+  secureboot_key:
+    description: "Secure Boot signing key (PEM); only builds from big-comm/big-kernel get it (scripts/secureboot-key.sh)"
+    required: false
+    default: ''
 
 # Action steps definition
 runs:
@@ -738,6 +742,17 @@ runs:
         cd ..
         replicate '#'
 
+    - name: Prepare the Secure Boot key
+      if: inputs.secureboot_key != ''
+      shell: bash
+      env:
+        SECUREBOOT_KEY: ${{ inputs.secureboot_key }}
+        SOURCE_URL: ${{ inputs.url }}
+        BUILD_ENV: ${{ inputs.build_env }}
+      run: |
+        "${GITHUB_ACTION_PATH:-$GITHUB_WORKSPACE}/scripts/secureboot-key.sh" prepare \
+          "$SOURCE_URL" "$BUILD_ENV" "$RUNNER_TEMP/secureboot"
+
     - name: Build package
       shell: bash
       env:
@@ -1052,6 +1067,10 @@ runs:
           fi
         fi
 
+        # The Secure Boot key is for makepkg only: gone before anything else runs.
+        "${GITHUB_ACTION_PATH:-$GITHUB_WORKSPACE}/scripts/secureboot-key.sh" remove
+        unset BIGCOMMUNITY_SB_KEY
+
         msg_info '# Execute extra command, if provided'
         if [[ -n "${{ inputs.extra_command }}" ]]; then
           msg_raw "Executing extra command: ${{ inputs.extra_command }}"
@@ -1066,6 +1085,11 @@ runs:
         msg_run 'ls -la /home/sources'
         msg_run 'ls -la /home/packages'
         replicate '#'
+
+    - name: Remove the Secure Boot key
+      if: always()
+      shell: bash
+      run: '"${GITHUB_ACTION_PATH:-$GITHUB_WORKSPACE}/scripts/secureboot-key.sh" remove'
 
     - name: Sign Package
       shell: bash
