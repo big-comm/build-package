@@ -172,6 +172,8 @@ jobs:
           # Translations are maintained in each repository; the build no longer rewrites them
           translate: 'false'
           openai_key: ${{ secrets.OPENAI_KEY }}
+          # Handed to big-comm/big-kernel builds only (scripts/secureboot-key.sh).
+          secureboot_key: ${{ secrets.SECUREBOOT_KEY }}
 
           repo_host: ${{ secrets.PKGBUILD_HOST }}
           repo_user: ${{ secrets.PKGBUILD_USER }}

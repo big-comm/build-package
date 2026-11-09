@@ -104,6 +104,18 @@ message per step. A message that cannot be edited is sent anew, and that one
 is edited from then on. `tests/test-telegram.sh` checks it against a fake Bot
 API.
 
+## Secure Boot key
+
+The `SECUREBOOT_KEY` organization secret signs the linux-big kernel and its
+modules for Secure Boot (see `secureboot/` in big-comm/big-kernel). Every
+package goes through this action, AUR ones included, and a PKGBUILD can read
+whatever its build can, so `scripts/secureboot-key.sh` writes the key only for
+builds from big-comm/big-kernel. It writes the key to a file readable by the
+build user alone and deletes it right after `makepkg`, before the extra
+command and the upload, and again at the end of the job. Every other build
+runs exactly as it did before. `tests/test-secureboot-key.sh` checks who gets
+the key.
+
 ## Usage
 
 To use these workflows and the custom action in your repository:
