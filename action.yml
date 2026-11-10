@@ -538,6 +538,9 @@ runs:
         sudo sed -i '/PACKAGER=/s/.*/PACKAGER="Big Community Package Build <talesam@gmail.com>"/' /etc/makepkg.conf
         sudo sed -i '/MAKEFLAGS=/s/.*/MAKEFLAGS="-j'$(nproc)'"/' /etc/makepkg.conf
         sudo sed -i '/GPGKEY=/s/.*/GPGKEY="AECEEE84E52BBFAA9F1C9DF01EA0CEEEB09B44A3"/; t; $a GPGKEY="AECEEE84E52BBFAA9F1C9DF01EA0CEEEB09B44A3"' /etc/makepkg.conf
+        # A connection reset while downloading a source is retried instead of
+        # failing the build (mesa-big, archive.mesa3d.org, 2026-11-10).
+        sudo "${GITHUB_ACTION_PATH:-$GITHUB_WORKSPACE}/scripts/makepkg-download-retry.sh" /etc/makepkg.conf
 
         # Modify manjaro-chrootbuild
         sudo sed -i 's|https://repo.manjaro.org/repo|https://nnenix.mm.fcix.net/manjaro|' /usr/lib/manjaro-chrootbuild/util.sh
