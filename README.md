@@ -96,6 +96,15 @@ Test it locally, on real packages and the real `repo-add`:
 tests/test-update-repository.sh
 ```
 
+## Downloading sources
+
+makepkg downloads the sources with curl, and the `--retry 3` of the image's
+`makepkg.conf` retries only timeouts and HTTP 5xx: one connection reset failed
+the build. `scripts/makepkg-download-retry.sh` makes the http and https agents
+retry every error, five times, ten seconds apart, resuming the partial file.
+`tests/test-makepkg-download-retry.sh` checks it against a server that resets
+the first two connections.
+
 ## Telegram
 
 Each build has one Telegram message: the first step sends it and every later
